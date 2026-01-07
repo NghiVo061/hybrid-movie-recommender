@@ -3,9 +3,10 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 class CollaborativeFilteringModel:
-    def __init__(self, matrix_path, user_means_path):
+    def __init__(self, matrix_path, user_means_path, movies_path):
         self.user_item_centered = pd.read_csv(matrix_path, index_col='user_id')
         self.user_means = pd.read_csv(user_means_path, index_col='user_id')
+        self.movies = pd.read_csv(movies_path)
         self.user_sim_df = None
 
     def fit(self):
@@ -15,10 +16,10 @@ class CollaborativeFilteringModel:
             index=self.user_item_centered.index, 
             columns=self.user_item_centered.index
         )
-        print("CF Model: Đã xây dựng xong ma trận User-User Similarity.")
+        print("CF Model: Đã xây dựng xong ma trận tương đồng User-User.")
 
     def predict_rating(self, user_id, movie_id):
-        m_id = str(movie_id) 
+        m_id = str(movie_id)
         if user_id not in self.user_item_centered.index or m_id not in self.user_item_centered.columns:
             return 0
         
@@ -34,13 +35,32 @@ class CollaborativeFilteringModel:
         
         return num / den if den != 0 else 0
 
-    def get_full_prediction(self, user_id, movie_id):
-        pred_centered = self.predict_rating(user_id, movie_id)
-        user_mean = self.user_means.loc[user_id, 'mean_rating']
-        return pred_centered + user_mean
+    def recommend(self, user_id, top_n=10):
 
-cf_model = CollaborativeFilteringModel('user_item_matrix_centered.csv', 'user_mean_ratings.csv')
+        user_ratings = self.user_item_centered.loc[user_id]
+        unrated_movies = user_ratings[user_ratings.isna()].index.tolist()
+        
+
+        predictions = []
+        for m_id in unrated_movies:
+            pred_score = self.predict_rating(user_id, m_id)
+            predictions.append((m_id, pred_score))
+
+        predictions.sort(key=lambda x: x[1], reverse=True)
+
+        top_predictions = predictions[:top_n]
+        top_movie_ids = [int(p[0]) for p in top_predictions]
+
+        result = self.movies[self.movies['movie_id'].isin(top_movie_ids)]
+        return result[['movie_id', 'title', 'genres_text']]
+
+
+cf_model = CollaborativeFilteringModel(
+    'user_item_matrix_centered.csv', 
+    'user_mean_ratings.csv', 
+    'movies_cleaned.csv'
+)
 cf_model.fit()
-u_id, m_id = 1, 10
-pred = cf_model.get_full_prediction(u_id, m_id)
-print(f"\nDự đoán số sao User {u_id} sẽ chấm cho Movie {m_id}: {pred:.2f}")
+
+print(f"\nTop 10 phim gợi ý cho User {user_test} dựa trên Collaborative Filtering:")
+print(cf_model.recommend(user_id=user_test, top_n=10))
