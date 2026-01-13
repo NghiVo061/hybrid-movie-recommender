@@ -1,0 +1,19 @@
+# Hệ thống & Python rác
+__pycache__/
+*.pyc
+.DS_Store
+
+# Dữ liệu (QUAN TRỌNG)
+# Chặn toàn bộ thư mục data vì file .pkl của bạn nằm trong này
+data/
+# Hoặc chặn đích danh các file nặng nếu bạn muốn giữ lại cấu trúc folder
+*.pkl
+*.csv
+
+# Thư mục dữ liệu tải về tạm thời
+ml-latest-small/
+ml-latest-small.zip
+
+# Môi trường ảo (nếu bạn có dùng)
+venv/
+.env
