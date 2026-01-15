@@ -7,9 +7,10 @@ import sys
 sys.path.append(os.getcwd())
 # ------------------------
 
-from ContentBased import ContentBasedModel
-from CollaborativeFiltering import CollaborativeModel
-from UserManager import UserManager
+from models.ContentBased import ContentBasedModel
+from models.CollaborativeFiltering import CollaborativeModel
+from models.UserManager import UserManager
+
 
 class AdaptiveHybridModel:
     def __init__(self, data_dir: str = None):
