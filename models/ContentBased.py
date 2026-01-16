@@ -3,206 +3,226 @@ import joblib
 import os
 import numpy as np
 
-
 class ContentBasedModel:
     def __init__(self, data_dir: str = None, min_similarity: float = 0.05):
-        """
-        data_dir: trỏ tới data/processed/evaluation
-        """
+        # Logic tìm đường dẫn (Fallback nếu chạy riêng lẻ)
         if data_dir is None:
             current_file = os.path.abspath(__file__)
             project_root = os.path.dirname(os.path.dirname(current_file))
             data_dir = os.path.join(project_root, 'data', 'processed', 'evaluation')
-
+        
         self.data_dir = data_dir
-
-        # common/ là anh em của evaluation/
+        # Common luôn là thư mục anh em của data_dir (evaluation/production)
         self.common_dir = os.path.join(os.path.dirname(data_dir), 'common')
 
         self.min_similarity = min_similarity
-
         self.movies = None
         self.cosine_sim = None
-        self.tfidf_matrix = None
         self.id_to_index = None
         self.ratings = None
-
         self.is_ready = False
 
         self._load_data()
 
-    # =========================================================
-    # LOAD DATA
-    # =========================================================
     def _load_data(self):
-        print(f">> [Content-Based] Loading data...")
-        print(f"   • common_dir: {self.common_dir}")
-        print(f"   • data_dir  : {self.data_dir}")
-
+        """Load dữ liệu phim và ma trận tương đồng."""
+        print(f">> [Content-Based] Loading data from {self.common_dir}...")
         try:
-            # -------- COMMON FILES --------
             movies_path = os.path.join(self.common_dir, 'movies_cleaned.csv')
             cosine_path = os.path.join(self.common_dir, 'cosine_similarity_matrix.pkl')
-            tfidf_path = os.path.join(self.common_dir, 'tfidf_matrix.pkl')
 
-            if not os.path.exists(movies_path):
-                raise FileNotFoundError("movies_cleaned.csv not found")
+            train_path = os.path.join(self.data_dir, 'train_data.csv')
+            full_path = os.path.join(self.data_dir, 'ratings_cleaned.csv')
+            ratings_path = train_path if os.path.exists(train_path) else full_path
 
-            if not os.path.exists(cosine_path):
-                raise FileNotFoundError("cosine_similarity_matrix.pkl not found")
+            if not os.path.exists(movies_path) or not os.path.exists(cosine_path):
+                raise FileNotFoundError("Missing data files.")
 
-            if not os.path.exists(tfidf_path):
-                raise FileNotFoundError("tfidf_matrix.pkl not found")
-
-            # -------- LOAD COMMON --------
             self.movies = pd.read_csv(movies_path)
             self.cosine_sim = joblib.load(cosine_path).astype(np.float32)
-            self.tfidf_matrix = joblib.load(tfidf_path)
 
-            # -------- RATINGS (FULL DATA FOR UI) --------
-            ratings_path = os.path.join(
-                os.path.dirname(self.data_dir),  # processed/
-                'production',
-                'ratings_cleaned.csv'
-            )
+            if os.path.exists(ratings_path):
+                self.ratings = pd.read_csv(ratings_path)
+            else:
+                print(f"⚠️ Warning: No ratings file found at {ratings_path}.")
 
-            if not os.path.exists(ratings_path):
-                raise FileNotFoundError("ratings_cleaned.csv not found in production/")
+            self.id_to_index = pd.Series(self.movies.index, index=self.movies['movieId']).to_dict()
 
-            self.ratings = pd.read_csv(ratings_path)
-
-            # -------- ID → INDEX --------
-            self.id_to_index = pd.Series(
-                self.movies.index,
-                index=self.movies['movieId']
-            ).to_dict()
-
-            # -------- CLEAN TEXT COLS --------
             for col in ['genres', 'tag', 'overview']:
                 if col in self.movies.columns:
                     self.movies[col] = self.movies[col].fillna('')
 
             self.is_ready = True
-            print(f">> [Content-Based] READY ✔")
-            print(f"   • Movies : {len(self.movies)}")
-            print(f"   • Ratings: {len(self.ratings)}")
+            print(f">> [Content-Based] Ready! Loaded {len(self.movies)} movies.")
 
         except Exception as e:
-            print("❌ [Content-Based] FAILED")
-            print("→ ERROR:", repr(e))
+            print(f"ERROR loading CB model: {str(e)}")
             self.is_ready = False
 
-    # =========================================================
-    # PREDICT
-    # =========================================================
     def predict(self, user_id: int, movie_id: int) -> float:
-        if not self.is_ready:
-            return 0.0
-
-        if movie_id not in self.id_to_index:
+        """
+        Dự đoán rating bằng trung bình trọng số nội dung.
+        Chiến lược: Lấy 50 phim mới nhất (bao gồm cả phim tốt và xấu) để tránh Bias.
+        """
+        if not self.is_ready or self.ratings is None or movie_id not in self.id_to_index:
             return 0.0
 
         user_data = self.ratings[self.ratings['userId'] == user_id]
-        if user_data.empty:
-            return 0.0
+        if user_data.empty: return 0.0
 
-        # lấy 50 phim gần nhất
-        profile = user_data.sort_values(
-            by='timestamp', ascending=False
-        ).head(50)
+        # 1. Lấy 50 phim mới nhất trong lịch sử
+        if 'timestamp' in user_data.columns:
+            profile_data = user_data.sort_values(by='timestamp', ascending=False).head(50)
+        else:
+            profile_data = user_data.tail(50)
 
-        valid = profile['movieId'].isin(self.id_to_index.keys())
-        profile = profile[valid]
+        # 2. Quan trọng: Lọc để đảm bảo movieId tồn tại trong ma trận similarity
+        # Điều này tránh lỗi mismatch shape khi tính np.dot
+        mask = profile_data['movieId'].isin(self.id_to_index.keys())
+        valid_profile = profile_data[mask]
 
-        if profile.empty:
+        if valid_profile.empty:
             return float(user_data['rating'].mean())
 
-        indices = [self.id_to_index[m] for m in profile['movieId']]
-        ratings = profile['rating'].values
+        watched_ids = valid_profile['movieId'].values
+        actual_ratings = valid_profile['rating'].values
+        valid_indices = [self.id_to_index[m_id] for m_id in watched_ids]
 
+        # 3. Tính toán độ tương đồng
         movie_idx = self.id_to_index[movie_id]
-        sims = self.cosine_sim[movie_idx][indices]
-        sims = np.where(sims < self.min_similarity, 0, sims)
+        sim_scores = self.cosine_sim[movie_idx][valid_indices]
 
-        if sims.sum() == 0:
-            return float(np.mean(ratings))
+        # 4. Lọc similarity quá thấp để tránh nhiễu (giống logic recommend)
+        sim_scores = np.where(sim_scores < self.min_similarity, 0, sim_scores)
 
-        pred = np.dot(sims, ratings) / np.sum(sims)
+        sum_sim = np.sum(sim_scores)
+
+        # 5. Trả về kết quả
+        if sum_sim <= 0:
+            # Nếu không tìm thấy phim tương đồng, trả về trung bình của chính 50 phim này
+            return float(np.mean(actual_ratings))
+
+        # Tính điểm dự đoán (Weighted Average)
+        pred = np.dot(sim_scores, actual_ratings) / sum_sim
+
+        # Chỉ dùng clip, không làm tròn để giữ độ nhạy cho RMSE
         return float(np.clip(pred, 0.5, 5.0))
 
-    # =========================================================
-    # RECOMMEND
-    # =========================================================
     def recommend(self, user_id: int, top_k: int = 10) -> pd.DataFrame:
-        if not self.is_ready:
+        """
+        Gợi ý phim cho User bằng Content-Based Filtering.
+        """
+        if not self.is_ready or self.ratings is None:
             return pd.DataFrame()
 
         user_data = self.ratings[self.ratings['userId'] == user_id]
         if user_data.empty:
             return pd.DataFrame()
 
-        profile = user_data.sort_values(
-            by='timestamp', ascending=False
-        ).head(50)
+        # 1. ĐỒNG BỘ ĐẦU VÀO: Lấy 50 phim mới nhất (giống predict)
+        if 'timestamp' in user_data.columns:
+            profile_data = user_data.sort_values(by='timestamp', ascending=False).head(50)
+        else:
+            profile_data = user_data.tail(50)
 
-        valid = profile['movieId'].isin(self.id_to_index.keys())
-        profile = profile[valid]
+        mask = profile_data['movieId'].isin(self.id_to_index.keys())
+        valid_profile = profile_data[mask]
 
-        if profile.empty:
+        if valid_profile.empty:
             return pd.DataFrame()
 
-        watched_idx = [self.id_to_index[m] for m in profile['movieId']]
-        ratings = profile['rating'].values
+        watched_indices = [self.id_to_index[m] for m in valid_profile['movieId'].values]
+        actual_ratings = valid_profile['rating'].values
 
-        sim_subset = self.cosine_sim[watched_idx]
+        # 2. TÍNH TOÁN: Weighted Average
+        sim_subset = self.cosine_sim[watched_indices]
         sim_subset = np.where(sim_subset < self.min_similarity, 0, sim_subset)
 
-        weighted_sum = np.dot(ratings, sim_subset)
-        sim_sum = np.sum(sim_subset, axis=0)
-        sim_sum = np.where(sim_sum == 0, 1, sim_sum)
+        weighted_sum = np.dot(actual_ratings, sim_subset)
+        sum_sim = np.sum(sim_subset, axis=0)
+        sum_sim = np.where(sum_sim == 0, 1, sum_sim)
 
-        preds = weighted_sum / sim_sum
+        preds = weighted_sum / sum_sim
         preds = np.clip(preds, 0.5, 5.0)
 
-        # loại phim đã xem
-        full_watched = user_data['movieId'].values
-        watched_all_idx = [
-            self.id_to_index[m]
-            for m in full_watched
-            if m in self.id_to_index
-        ]
-        preds[watched_all_idx] = -1
+        # 3. LỌC BỎ PHIM ĐÃ XEM (Dựa trên toàn bộ lịch sử)
+        full_watched_ids = user_data['movieId'].values
+        full_watched_indices = [self.id_to_index[m] for m in full_watched_ids if m in self.id_to_index]
+        preds[full_watched_indices] = -1
 
-        top_idx = np.argsort(preds)[-top_k:][::-1]
-        valid_idx = [i for i in top_idx if preds[i] >= 3.0]
+        # 4. LẤY TOP K & CHẶN CHẤT LƯỢNG (Score >= 3.0)
+        top_indices = np.argsort(preds)[-top_k:][::-1]
+        valid_indices = [idx for idx in top_indices if preds[idx] >= 3.0]
 
-        if not valid_idx:
-            valid_idx = top_idx[:top_k]
+        # Fallback nếu không có phim nào >= 3.0
+        if not valid_indices:
+            valid_indices = [idx for idx in top_indices if preds[idx] > 0][:top_k]
 
-        result = pd.DataFrame({
-            'movieId': self.movies.iloc[valid_idx]['movieId'].values,
-            'score': preds[valid_idx]
+        if not valid_indices:
+            return pd.DataFrame()
+
+        # 5. ĐỊNH DẠNG KẾT QUẢ ĐỒNG NHẤT VỚI CF
+        # Tạo DataFrame tạm thời để chứa điểm số
+        res_df = pd.DataFrame({
+            'movieId': self.movies.iloc[valid_indices]['movieId'].values,
+            'predicted_rating': preds[valid_indices]
         })
 
-        result = result.merge(self.movies, on='movieId', how='left')
+        # Merge với thông tin phim (giống cách CF đang làm)
+        final_result = pd.merge(res_df, self.movies, on='movieId', how='left')
+
+        cols_map = {
+            'movieId': 'movieId',
+            'title': 'title',
+            'genres': 'genres',
+            'tag': 'tags',
+            'predicted_rating': 'score',
+            'rating': 'avg_rating',
+            'vote_count': 'votes'
+        }
+
+        # Chỉ lấy các cột tồn tại để tránh lỗi KeyError
+        available_cols = [c for c in cols_map.keys() if c in final_result.columns]
+        result = final_result[available_cols].rename(columns=cols_map)
+
+        if 'votes' in result.columns:
+            result['votes'] = result['votes'].fillna(0).astype(int)
 
         return result.reset_index(drop=True)
 
-    # =========================================================
-    # EVALUATION COMPAT
-    # =========================================================
-    def recommend_for_user(self, user_id: int, top_k: int = 10):
+    def recommend_for_user(self, user_id: int, top_k: int = 10) -> pd.DataFrame:
+        """Đồng bộ Interface cho Evaluation."""
         return self.recommend(user_id, top_k)
 
-
 # =========================================================
-# TEST STANDALONE
+# DRIVER CODE
 # =========================================================
 if __name__ == "__main__":
-    cb = ContentBasedModel()
-    print("Ready:", cb.is_ready)
+    # Khởi tạo Model
+    cb_model = ContentBasedModel()
 
-    if cb.is_ready:
-        uid = 414
-        recs = cb.recommend(uid, 5)
-        print(recs[['title', 'score']].head())
+    # --- 2. TEST USER PROFILE ---
+    selected_uid = 414
+
+    # --- 3. TEST RECOMMENDATIONS ---
+    print(f"\n--- 3. TEST RECOMMENDATIONS for {selected_uid} ---")
+    import time
+    start_time = time.time()
+    recs = cb_model.recommend(selected_uid, top_k=5)
+    print(f"⏱️ Time: {time.time() - start_time:.4f}s")
+
+    if not recs.empty:
+        print(recs[['title', 'score', 'avg_rating', 'votes']])
+    else:
+        print("Không có gợi ý nào.")
+
+    # --- 4. TEST EVALUATION FUNCTIONS ---
+    print(f"\n--- 4. TEST EVALUATION FUNCTIONS for {selected_uid} ---")
+    test_movie_id = 1 # Toy Story
+    pred_score = cb_model.predict(selected_uid, test_movie_id)
+    print(f"✅ [Predict] Predicted rating for User {selected_uid} - Movie {test_movie_id}: {pred_score:.2f}")
+
+    print(f"✅ [RecommendForUser] Top 5 Evaluation Recs:")
+    eval_recs = cb_model.recommend_for_user(selected_uid, top_k=5)
+    if not eval_recs.empty:
+        print(eval_recs[['movieId', 'title', 'score']].to_string(index=False))
