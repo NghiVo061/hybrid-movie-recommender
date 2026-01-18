@@ -7,33 +7,27 @@ import os
 import sys
 import time # Dùng để đo thời gian chạy
 
-# --- FIX LỖI MODULE NOT FOUND ---
-# Lấy đường dẫn thư mục hiện tại
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# Lấy đường dẫn thư mục models
-models_dir = os.path.join(current_dir, 'models')
-
-# Thêm folder 'models' vào hệ thống tìm kiếm của Python
-if models_dir not in sys.path:
-    sys.path.append(models_dir)
-# --------------------------------
-
-# Import Model
+# =========================================================
+# IMPORT MODEL (CHUẨN PYTHON)
+# =========================================================
 try:
-    from Hybrid import AdaptiveHybridModel
-except ImportError:
-    # Fallback đề phòng trường hợp file tên là hybrid.py (thường)
-    from hybrid import AdaptiveHybridModel
+    from models.Hybrid import AdaptiveHybridModel
+except ImportError as e:
+    print(f"❌ Lỗi Import: {e}")
+    print("💡 Hãy đảm bảo bạn đang chạy lệnh python tại thư mục gốc của dự án.")
+    exit()
 
-# Thư mục lưu biểu đồ
+# Cấu hình thư mục lưu biểu đồ
 OUTPUT_DIR = 'static/evaluation_charts'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 
 def run_evaluation():
     print("--- BẮT ĐẦU QUÁ TRÌNH ĐÁNH GIÁ (FULL DATASET) ---")
     start_time_total = time.time()
     
     # 1. KHỞI TẠO MODEL
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(current_dir, 'data', 'processed', 'evaluation')
     print(f">> Data path: {data_path}")
     

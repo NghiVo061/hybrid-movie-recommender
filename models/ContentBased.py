@@ -61,8 +61,9 @@ class ContentBasedModel:
 
     def predict(self, user_id: int, movie_id: int) -> float:
         """
-        Dự đoán rating bằng trung bình trọng số nội dung.
-        Chiến lược: Lấy 50 phim mới nhất (bao gồm cả phim tốt và xấu) để tránh Bias.
+        Dự đoán rating một cách thận trọng.
+        - Nếu có dữ liệu tương đồng: Trả về 0.5 -> 5.0
+        - Nếu KHÔNG có dữ liệu tương đồng (Similarity=0): Trả về Trung bình của User.
         """
         if not self.is_ready or self.ratings is None or movie_id not in self.id_to_index:
             return 0.0
@@ -70,14 +71,13 @@ class ContentBasedModel:
         user_data = self.ratings[self.ratings['userId'] == user_id]
         if user_data.empty: return 0.0
 
-        # 1. Lấy 50 phim mới nhất trong lịch sử
+        # 1. Lấy 50 phim mới nhất (Snapshot sở thích gần đây)
         if 'timestamp' in user_data.columns:
             profile_data = user_data.sort_values(by='timestamp', ascending=False).head(50)
         else:
             profile_data = user_data.tail(50)
 
-        # 2. Quan trọng: Lọc để đảm bảo movieId tồn tại trong ma trận similarity
-        # Điều này tránh lỗi mismatch shape khi tính np.dot
+        # 2. Lọc phim hợp lệ
         mask = profile_data['movieId'].isin(self.id_to_index.keys())
         valid_profile = profile_data[mask]
 
@@ -92,25 +92,26 @@ class ContentBasedModel:
         movie_idx = self.id_to_index[movie_id]
         sim_scores = self.cosine_sim[movie_idx][valid_indices]
 
-        # 4. Lọc similarity quá thấp để tránh nhiễu (giống logic recommend)
+        # 4. Lọc nhiễu (ngưỡng 0.05)
         sim_scores = np.where(sim_scores < self.min_similarity, 0, sim_scores)
-
         sum_sim = np.sum(sim_scores)
 
-        # 5. Trả về kết quả
+        # 5. XỬ LÝ FALLBACK (ĐỒNG BỘ)
+        # Nếu tổng độ tương đồng = 0 (Máy không tìm thấy manh mối nào)
         if sum_sim <= 0:
-            # Nếu không tìm thấy phim tương đồng, trả về trung bình của chính 50 phim này
+            # Trả về điểm trung bình của chính User đó (Baseline an toàn nhất)
+            # Không trả về 0 (vì rating min là 0.5), không trả về 0.5 (vì bị coi là ghét)
             return float(np.mean(actual_ratings))
 
-        # Tính điểm dự đoán (Weighted Average)
+        # Nếu có dữ liệu: Tính Weighted Average
         pred = np.dot(sim_scores, actual_ratings) / sum_sim
 
-        # Chỉ dùng clip, không làm tròn để giữ độ nhạy cho RMSE
+        # Clip kết quả trong khoảng hợp lệ 0.5 - 5.0
         return float(np.clip(pred, 0.5, 5.0))
 
     def recommend(self, user_id: int, top_k: int = 10) -> pd.DataFrame:
         """
-        Gợi ý phim cho User bằng Content-Based Filtering.
+        Gợi ý phim: Chỉ gợi ý những phim máy tính 'Hiểu' (Score > 0).
         """
         if not self.is_ready or self.ratings is None:
             return pd.DataFrame()
@@ -119,7 +120,7 @@ class ContentBasedModel:
         if user_data.empty:
             return pd.DataFrame()
 
-        # 1. ĐỒNG BỘ ĐẦU VÀO: Lấy 50 phim mới nhất (giống predict)
+        # 1. ĐỒNG BỘ ĐẦU VÀO
         if 'timestamp' in user_data.columns:
             profile_data = user_data.sort_values(by='timestamp', ascending=False).head(50)
         else:
@@ -134,54 +135,71 @@ class ContentBasedModel:
         watched_indices = [self.id_to_index[m] for m in valid_profile['movieId'].values]
         actual_ratings = valid_profile['rating'].values
 
-        # 2. TÍNH TOÁN: Weighted Average
+        # 2. TÍNH TOÁN MA TRẬN
         sim_subset = self.cosine_sim[watched_indices]
         sim_subset = np.where(sim_subset < self.min_similarity, 0, sim_subset)
 
         weighted_sum = np.dot(actual_ratings, sim_subset)
         sum_sim = np.sum(sim_subset, axis=0)
-        sum_sim = np.where(sum_sim == 0, 1, sum_sim)
 
-        preds = weighted_sum / sum_sim
-        preds = np.clip(preds, 0.5, 5.0)
+        # 3. XỬ LÝ ĐIỂM SỐ (QUAN TRỌNG ⭐)
+        # Tạo mask cho những phim có độ tương đồng > 0
+        has_sim_mask = sum_sim > 0
+        
+        # Tránh chia cho 0
+        safe_sum_sim = np.where(has_sim_mask, sum_sim, 1.0)
+        preds = weighted_sum / safe_sum_sim
 
-        # 3. LỌC BỎ PHIM ĐÃ XEM (Dựa trên toàn bộ lịch sử)
+        # Logic chuẩn:
+        # - Nếu có tương đồng: Clip điểm từ 0.5 đến 5.0
+        # - Nếu KHÔNG tương đồng: Giữ nguyên là 0.0 (để lát nữa lọc bỏ)
+        preds = np.where(has_sim_mask, np.clip(preds, 0.5, 5.0), 0.0)
+
+        # 4. LỌC BỎ PHIM ĐÃ XEM
         full_watched_ids = user_data['movieId'].values
         full_watched_indices = [self.id_to_index[m] for m in full_watched_ids if m in self.id_to_index]
-        preds[full_watched_indices] = -1
+        preds[full_watched_indices] = -1 # Đánh dấu đã xem
 
-        # 4. LẤY TOP K & CHẶN CHẤT LƯỢNG (Score >= 3.0)
-        top_indices = np.argsort(preds)[-top_k:][::-1]
-        valid_indices = [idx for idx in top_indices if preds[idx] >= 3.0]
+        # 5. LẤY ỨNG VIÊN (MỞ RỘNG BỘ ĐỆM)
+        # Lấy gấp 20 lần số lượng cần thiết để tha hồ lọc rác
+        n_candidates = top_k * 20 
+        top_indices = np.argsort(preds)[-n_candidates:][::-1]
 
-        # Fallback nếu không có phim nào >= 3.0
-        if not valid_indices:
-            valid_indices = [idx for idx in top_indices if preds[idx] > 0][:top_k]
+        # 6. CHỌN LỌC CUỐI CÙNG
+        # Chỉ lấy những phim có điểm > 0 (Tức là máy có cơ sở để dự đoán)
+        valid_indices = [idx for idx in top_indices if preds[idx] > 0]
+        
+        # Cắt lấy Top K
+        valid_indices = valid_indices[:top_k]
 
         if not valid_indices:
             return pd.DataFrame()
 
-        # 5. ĐỊNH DẠNG KẾT QUẢ ĐỒNG NHẤT VỚI CF
-        # Tạo DataFrame tạm thời để chứa điểm số
+        # 7. TẠO DATAFRAME KẾT QUẢ
         res_df = pd.DataFrame({
             'movieId': self.movies.iloc[valid_indices]['movieId'].values,
             'predicted_rating': preds[valid_indices]
         })
 
-        # Merge với thông tin phim (giống cách CF đang làm)
+        # Merge thông tin
         final_result = pd.merge(res_df, self.movies, on='movieId', how='left')
 
-        cols_map = {
-            'movieId': 'movieId',
-            'title': 'title',
-            'genres': 'genres',
-            'tag': 'tags',
-            'predicted_rating': 'score',
-            'rating': 'avg_rating',
-            'vote_count': 'votes'
-        }
+        # 8. CHỐT CHẶN CUỐI CÙNG: LỌC RÁC (Last Line of Defense)
+        # Đảm bảo không còn phim '(no genres listed)' nào lọt lưới
+        if 'genres' in final_result.columns:
+            final_result = final_result[
+                ~final_result['genres'].str.contains('(no genres listed)', case=False, regex=False)
+            ]
+            
+        # Nếu lọc xong bị thiếu phim thì chấp nhận trả về ít hơn K, còn hơn là trả về rác.
+        final_result = final_result.head(top_k)
 
-        # Chỉ lấy các cột tồn tại để tránh lỗi KeyError
+        # 9. Đổi tên cột cho khớp Frontend
+        cols_map = {
+            'movieId': 'movieId', 'title': 'title', 'genres': 'genres',
+            'tag': 'tags', 'predicted_rating': 'score',
+            'rating': 'avg_rating', 'vote_count': 'votes'
+        }
         available_cols = [c for c in cols_map.keys() if c in final_result.columns]
         result = final_result[available_cols].rename(columns=cols_map)
 
