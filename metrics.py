@@ -10,20 +10,12 @@ import time # Dùng để đo thời gian chạy
 # =========================================================
 # IMPORT MODEL (CHUẨN PYTHON)
 # =========================================================
-current_dir = os.path.dirname(os.path.abspath(__file__))
-models_dir = os.path.join(current_dir, 'models')
-if models_dir not in sys.path:
-    sys.path.append(models_dir)
-
 try:
-    from Hybrid import AdaptiveHybridModel
-except ImportError:
-    # Fallback
-    try:
-        from hybrid import AdaptiveHybridModel
-    except ImportError as e:
-        print(f"❌ Lỗi Import: {e}")
-        exit()
+    from models.Hybrid import AdaptiveHybridModel
+except ImportError as e:
+    print(f"❌ Lỗi Import: {e}")
+    print("💡 Hãy đảm bảo bạn đang chạy lệnh python tại thư mục gốc của dự án.")
+    exit()
 
 # Cấu hình thư mục lưu biểu đồ
 OUTPUT_DIR = 'static/evaluation_charts'
@@ -35,6 +27,7 @@ def run_evaluation():
     start_time_total = time.time()
     
     # 1. KHỞI TẠO MODEL
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(current_dir, 'data', 'processed', 'evaluation')
     print(f">> Data path: {data_path}")
     
