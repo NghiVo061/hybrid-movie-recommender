@@ -16,6 +16,103 @@ st.set_page_config(
     layout="wide"
 )
 
+
+st.markdown("""
+<style>
+/* ===== HARD REMOVE SIDEBAR COLLAPSE BUTTON (SVG TITLE FIX) ===== */
+button[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
+
+/* Một số version dùng thẻ khác */
+div[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
+
+/* Chặn luôn SVG title hover */
+svg title {
+    display: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+# =========================================================
+# CUSTOM SIDEBAR CSS
+# =========================================================
+st.markdown("""
+<style>
+/* ===== SIDEBAR CONTAINER ===== */
+section[data-testid="stSidebar"] {
+     background-color: #2b2f36;
+
+
+
+
+    border-right: 1px solid #1e293b;
+}
+
+/* ===== SIDEBAR TEXT ===== */
+section[data-testid="stSidebar"] * {
+    color: #e5e7eb !important;
+    font-family: "Inter", system-ui, sans-serif;
+}
+
+/* ===== SIDEBAR TITLE ===== */
+section[data-testid="stSidebar"] h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+/* ===== RADIO GROUP ===== */
+div[role="radiogroup"] {
+    gap: 8px;
+}
+
+/* ===== RADIO ITEM ===== */
+div[role="radiogroup"] label {
+     background-color: #2b2f36;
+    border: 2px solid #4b5563;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+    font-weight: 500;
+    transition: all 0.25s ease;
+}
+
+/* Hover */
+div[role="radiogroup"] label:hover {
+    background: #020617;
+    border-color: #6366f1;
+    transform: translateX(2px);
+}
+
+/* Checked */
+div[role="radiogroup"] label[data-checked="true"] {
+    background: linear-gradient(90deg, #4f46e5, #6366f1);
+    border: none;
+    color: white !important;
+    font-weight: 700;
+    box-shadow: 0 8px 20px rgba(99,102,241,0.35);
+}
+
+/* ===== SCROLLBAR ===== */
+section[data-testid="stSidebar"] ::-webkit-scrollbar {
+    width: 6px;
+}
+
+section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #4f46e5, #6366f1);
+    border-radius: 10px;
+}
+
+/* ===== FOOTER HIDE ===== */
+footer {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
+
+
+
 # =========================================================
 # INIT MODEL
 # =========================================================
@@ -34,6 +131,8 @@ except Exception as e:
 # =========================================================
 if "session_userId" not in st.session_state:
     st.session_state.session_userId = None
+    
+
 
 # Hàm hiển thị dataframe an toàn
 def safe_display(df, cols):
@@ -80,7 +179,7 @@ def format_result_df(df):
 # SIDEBAR
 # =========================================================
 st.sidebar.title("🎬 Movie Recommender")
-st.sidebar.caption("Hệ thống Gợi ý Phim Lai ghép Thích nghi")
+
 
 tab = st.sidebar.radio(
     "📂 Chức năng hệ thống",
@@ -162,7 +261,7 @@ if tab == "👤 Quản lý Người dùng (User)":
             c3.metric("📊 Phân loại", profile.get("interaction_level", "N/A"))
             
             st.markdown("---")
-            cl, cr = st.columns(2)
+            cl, cr = st.columns([2,8])
             with cl:
                 st.markdown("**🎭 Thể loại yêu thích:**")
                 genres = profile.get("top_genres", [])
@@ -206,7 +305,7 @@ elif tab == "📚 Lọc theo Nội dung (Content-Based)":
             # QUAN TRỌNG: use_container_width=False để hiện thanh cuộn ngang nếu nội dung dài
             st.dataframe(
                 df_show,
-                use_container_width=False, 
+                use_container_width=True,
                 column_config={
                     "Tên Phim": st.column_config.TextColumn(width="medium"),
                     "Thể loại": st.column_config.TextColumn(width="medium"),
@@ -254,7 +353,7 @@ elif tab == "👥 Lọc cộng đồng (Collaborative)":
 
             st.dataframe(
                 df_show,
-                use_container_width=False,
+                use_container_width=True,
                 column_config={
                     "Tên Phim": st.column_config.TextColumn(width="medium"),
                     "Thể loại": st.column_config.TextColumn(width="medium"),
@@ -291,7 +390,7 @@ elif tab == "👥 Lọc cộng đồng (Collaborative)":
                 
                 st.dataframe(
                     df_sim, 
-                    use_container_width=False,
+                    use_container_width=True,
                     column_config={
                         "User ID": st.column_config.NumberColumn(format="%d"),
                         "Độ tương đồng (%)": st.column_config.NumberColumn(format="%.2f%%"),
@@ -438,7 +537,7 @@ elif tab == "🧠 Gợi ý Lai (Adaptive Hybrid)":
             # Hiển thị DataFrame
             st.dataframe(
                 df_show,
-                use_container_width=False,
+                use_container_width=True,
                 column_config={
                     "Tên Phim": st.column_config.TextColumn(width="medium"),
                     "Thể loại": st.column_config.TextColumn(width="medium"),
