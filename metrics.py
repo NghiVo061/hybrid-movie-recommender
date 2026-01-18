@@ -10,12 +10,20 @@ import time # Dùng để đo thời gian chạy
 # =========================================================
 # IMPORT MODEL (CHUẨN PYTHON)
 # =========================================================
+current_dir = os.path.dirname(os.path.abspath(__file__))
+models_dir = os.path.join(current_dir, 'models')
+if models_dir not in sys.path:
+    sys.path.append(models_dir)
+
 try:
-    from models.Hybrid import AdaptiveHybridModel
-except ImportError as e:
-    print(f"❌ Lỗi Import: {e}")
-    print("💡 Hãy đảm bảo bạn đang chạy lệnh python tại thư mục gốc của dự án.")
-    exit()
+    from Hybrid import AdaptiveHybridModel
+except ImportError:
+    # Fallback
+    try:
+        from hybrid import AdaptiveHybridModel
+    except ImportError as e:
+        print(f"❌ Lỗi Import: {e}")
+        exit()
 
 # Cấu hình thư mục lưu biểu đồ
 OUTPUT_DIR = 'static/evaluation_charts'
@@ -27,7 +35,6 @@ def run_evaluation():
     start_time_total = time.time()
     
     # 1. KHỞI TẠO MODEL
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(current_dir, 'data', 'processed', 'evaluation')
     print(f">> Data path: {data_path}")
     
@@ -41,7 +48,6 @@ def run_evaluation():
     test_file = os.path.join(data_path, 'test_data.csv')
     if not os.path.exists(test_file):
         print(f"❌ Không tìm thấy file: {test_file}")
-        # Tạo dummy data nếu không thấy file (để tránh crash)
         test_data = pd.DataFrame({
             'userId': [414, 414, 414, 1, 1],
             'movieId': [1, 2, 3, 1, 5],
@@ -49,22 +55,19 @@ def run_evaluation():
         })
     else:
         test_data = pd.read_csv(test_file)
-        # Chuẩn hóa tên cột
         test_data.rename(columns={'user_id': 'userId', 'movie_id': 'movieId'}, inplace=True)
     
     print(f"✅ Đã load {len(test_data)} dòng dữ liệu kiểm thử.")
 
     # ==========================================
-    # NHIỆM VỤ 1: DỰ ĐOÁN LỖI (ERROR METRICS - RMSE & MAE)
+    # NHIỆM VỤ 1: DỰ ĐOÁN LỖI (ERROR METRICS)
     # ==========================================
     print("\n[Task 1] Đang tính RMSE và MAE (Trên toàn bộ dữ liệu Test)...")
     
     predictions = {'CB': [], 'CF': [], 'Hybrid': [], 'Actual': []}
 
-    # Chạy loop qua toàn bộ test_data
     for idx, row in test_data.iterrows():
         try:
-            # Map tên cột
             u_val = row.get('userId') if 'userId' in row else row.get('user_id')
             m_val = row.get('movieId') if 'movieId' in row else row.get('movie_id')
             
@@ -98,7 +101,7 @@ def run_evaluation():
         print(f"   👉 Model {model}: RMSE = {rmse:.4f}, MAE = {mae:.4f}")
 
     # ==========================================
-    # NHIỆM VỤ 2: ĐÁNH GIÁ XẾP HẠNG (PRECISION & RECALL)
+    # NHIỆM VỤ 2: ĐÁNH GIÁ XẾP HẠNG (RANKING)
     # ==========================================
     print("\n[Task 2] Đang tính Precision@10 và Recall@10...")
     
@@ -110,16 +113,14 @@ def run_evaluation():
     uid_col = 'userId' if 'userId' in relevant_data.columns else 'user_id'
     mid_col = 'movieId' if 'movieId' in relevant_data.columns else 'movie_id'
     
-    # Gom nhóm dữ liệu
     test_user_movies = relevant_data.groupby(uid_col)[mid_col].apply(list).to_dict()
     
-    # --- THAY ĐỔI: LẤY TẤT CẢ USER (FULL DATA) ---
+    # --- FULL DATA ---
     users_to_test = list(test_user_movies.keys())
     total_users_test = len(users_to_test)
     print(f"⏳ Đang chạy ranking cho {total_users_test} users (Vui lòng đợi)...")
     
     for i, u in enumerate(users_to_test):
-        # In tiến độ mỗi 50 user để biết code không bị treo
         if (i + 1) % 50 == 0:
             print(f"   ... Đang xử lý User thứ {i + 1}/{total_users_test}")
 
@@ -127,14 +128,12 @@ def run_evaluation():
         if len(ground_truth) == 0: continue
 
         try:
-            # Lấy danh sách gợi ý từ các model
             recs_cb = hybrid.cb_model.recommend_for_user(u, top_k=k)
             recs_cf = hybrid.cf_model.recommend_for_user(u, top_k=k)
             recs_hybrid = hybrid.recommend_for_user(u, top_k=k)
         except Exception:
             continue
         
-        # Hàm tính Precision và Recall
         def calculate_metrics(recs_df, truth_set):
             if recs_df is None or recs_df.empty: return 0.0, 0.0
             col_id = 'movieId' if 'movieId' in recs_df.columns else 'movie_id'
@@ -163,13 +162,12 @@ def run_evaluation():
         print(f"   👉 Model {model}: Precision@10 = {avg_p:.4f}, Recall@10 = {avg_r:.4f}")
 
     # ==========================================
-    # NHIỆM VỤ 3: PHÂN TÍCH TÍNH THÍCH NGHI (ALPHA)
+    # NHIỆM VỤ 3: PHÂN TÍCH ALPHA
     # ==========================================
     print("\n[Task 3] Đang phân tích Alpha (Toàn bộ User trong hệ thống)...")
     user_interactions = []
     alpha_values = []
     
-    # --- THAY ĐỔI: LẤY TẤT CẢ USER ---
     all_users = list(hybrid.user_manager.user_counts.keys())
     print(f"⏳ Đang tính Alpha cho {len(all_users)} users...")
     
@@ -180,19 +178,18 @@ def run_evaluation():
         alpha_values.append(alpha)
 
     # ==========================================
-    # NHIỆM VỤ 4: VẼ VÀ LƯU BIỂU ĐỒ (VISUALIZATION)
+    # NHIỆM VỤ 4: VẼ BIỂU ĐỒ (VISUALIZATION)
     # ==========================================
-    print("\n[Task 4] Đang vẽ và lưu biểu đồ (Style: Bold & Spacious)...")
-    sns.set_style("whitegrid") # Dùng grid trắng để thoáng mắt
+    print("\n[Task 4] Đang vẽ và lưu biểu đồ (Clean Style)...")
+    sns.set_style("whitegrid") 
 
+    # --- HÀM VẼ ĐÃ CHỈNH SỬA: BỎ 'Cao hơn/Thấp hơn là tốt hơn' ---
     def plot_comparison(metric_name, values, title, filename, color_palette, higher_is_better=True):
         plt.figure(figsize=(8, 6))
         ax = sns.barplot(x=models_list, y=values, palette=color_palette, hue=models_list, legend=False)
         
-        direction = "Cao hơn là tốt hơn" if higher_is_better else "Thấp hơn là tốt hơn"
-        
-        # 1. TIÊU ĐỀ: To, Đậm, Cách xa
-        plt.title(f'{title} ({direction})', fontsize=16, fontweight='bold', pad=20)
+        # 1. TIÊU ĐỀ: Chỉ hiển thị tên biểu đồ, bỏ phần trong ngoặc
+        plt.title(title, fontsize=16, fontweight='bold', pad=20)
         
         # 2. NHÃN TRỤC Y: To, Đậm, Cách xa
         plt.ylabel(metric_name, fontsize=14, fontweight='bold', labelpad=15)
@@ -201,22 +198,20 @@ def run_evaluation():
         plt.xticks(fontsize=12, fontweight='bold')
         plt.yticks(fontsize=12)
 
-        # 4. TĂNG KHOẢNG TRỐNG PHÍA TRÊN (Fix lỗi gạch ngang đè số)
+        # 4. TĂNG KHOẢNG TRỐNG
         if values:
             max_val = max(values)
-            # Tăng hẳn 20% để thoáng (đặc biệt quan trọng cho MAE)
             plt.ylim(0, max_val * 1.20) 
 
-        # 5. HIỂN THỊ SỐ LIỆU TRÊN CỘT (Đã fix nhích lên cao hơn)
+        # 5. HIỂN THỊ SỐ LIỆU
         for i, v in enumerate(values):
-            # Nhích lên 2% chiều cao max thay vì 1%
             offset = max_val * 0.02
             ax.text(i, v + offset, 
                     f"{v:.4f}", 
                     ha='center', va='bottom', 
                     fontweight='bold', fontsize=11, color='black')
         
-        plt.tight_layout() # Tự động căn lề
+        plt.tight_layout()
         save_path = f'{OUTPUT_DIR}/{filename}'
         plt.savefig(save_path)
         plt.close()
@@ -227,7 +222,7 @@ def run_evaluation():
     plot_comparison('RMSE', rmse_vals, 'So sánh Sai số RMSE', 
                     'rmse_comparison.png', 'Reds_d', higher_is_better=False)
 
-    # 2. MAE (Đã áp dụng fix khoảng cách)
+    # 2. MAE
     mae_vals = [results_error[m]['MAE'] for m in models_list]
     plot_comparison('MAE', mae_vals, 'So sánh Sai số MAE', 
                     'mae_comparison.png', 'Purples_d', higher_is_better=False)
@@ -242,26 +237,14 @@ def run_evaluation():
     plot_comparison('Recall@10', rec_vals, 'So sánh Recall@10', 
                     'recall_comparison.png', 'Blues_d', higher_is_better=True)
 
-    # 5. Scatter Plot (Alpha) - CHỈNH SỬA THEO YÊU CẦU UI
+    # 5. Scatter Plot (Alpha)
     if user_interactions:
         plt.figure(figsize=(10, 6))
-        
-        # Vẽ điểm
         plt.scatter(user_interactions, alpha_values, alpha=0.6, c=alpha_values, cmap='coolwarm')
         
-        # Tiêu đề: Font 16, In đậm, Cách xa
-        plt.title(f'Alpha thích nghi', 
-                  fontsize=16, fontweight='bold', pad=20)
-        
-        # Nhãn trục X: Font 14, In đậm, Cách xa
-        plt.xlabel('Số phim đã xem (Log Scale)', 
-                   fontsize=14, fontweight='bold', labelpad=15)
-        
-        # Nhãn trục Y: Font 14, In đậm, Cách xa
-        plt.ylabel('Trọng số Alpha', 
-                   fontsize=14, fontweight='bold', labelpad=15)
-        
-        # Tăng kích thước số trên trục
+        plt.title('Alpha thích nghi', fontsize=16, fontweight='bold', pad=20)
+        plt.xlabel('Số phim đã xem (Log Scale)', fontsize=14, fontweight='bold', labelpad=15)
+        plt.ylabel('Trọng số Alpha', fontsize=14, fontweight='bold', labelpad=15)
         plt.xticks(fontsize=12)
         plt.yticks(fontsize=12)
 
