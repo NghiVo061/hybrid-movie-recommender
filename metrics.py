@@ -182,20 +182,41 @@ def run_evaluation():
     # ==========================================
     # NHIỆM VỤ 4: VẼ VÀ LƯU BIỂU ĐỒ (VISUALIZATION)
     # ==========================================
-    print("\n[Task 4] Đang vẽ và lưu biểu đồ...")
-    sns.set_style("whitegrid")
+    print("\n[Task 4] Đang vẽ và lưu biểu đồ (Style: Bold & Spacious)...")
+    sns.set_style("whitegrid") # Dùng grid trắng để thoáng mắt
 
     def plot_comparison(metric_name, values, title, filename, color_palette, higher_is_better=True):
         plt.figure(figsize=(8, 6))
         ax = sns.barplot(x=models_list, y=values, palette=color_palette, hue=models_list, legend=False)
         
         direction = "Cao hơn là tốt hơn" if higher_is_better else "Thấp hơn là tốt hơn"
-        plt.title(f'{title} ({direction})')
-        plt.ylabel(metric_name)
         
+        # 1. TIÊU ĐỀ: To, Đậm, Cách xa
+        plt.title(f'{title} ({direction})', fontsize=16, fontweight='bold', pad=20)
+        
+        # 2. NHÃN TRỤC Y: To, Đậm, Cách xa
+        plt.ylabel(metric_name, fontsize=14, fontweight='bold', labelpad=15)
+        
+        # 3. NHÃN TRỤC X: To, Đậm (Model Names)
+        plt.xticks(fontsize=12, fontweight='bold')
+        plt.yticks(fontsize=12)
+
+        # 4. TĂNG KHOẢNG TRỐNG PHÍA TRÊN (Fix lỗi gạch ngang đè số)
+        if values:
+            max_val = max(values)
+            # Tăng hẳn 20% để thoáng (đặc biệt quan trọng cho MAE)
+            plt.ylim(0, max_val * 1.20) 
+
+        # 5. HIỂN THỊ SỐ LIỆU TRÊN CỘT (Đã fix nhích lên cao hơn)
         for i, v in enumerate(values):
-            ax.text(i, v, f"{v:.4f}", ha='center', va='bottom', fontweight='bold')
+            # Nhích lên 2% chiều cao max thay vì 1%
+            offset = max_val * 0.02
+            ax.text(i, v + offset, 
+                    f"{v:.4f}", 
+                    ha='center', va='bottom', 
+                    fontweight='bold', fontsize=11, color='black')
         
+        plt.tight_layout() # Tự động căn lề
         save_path = f'{OUTPUT_DIR}/{filename}'
         plt.savefig(save_path)
         plt.close()
@@ -204,32 +225,50 @@ def run_evaluation():
     # 1. RMSE
     rmse_vals = [results_error[m]['RMSE'] for m in models_list]
     plot_comparison('RMSE', rmse_vals, 'So sánh Sai số RMSE', 
-                   'rmse_comparison.png', 'Reds_d', higher_is_better=False)
+                    'rmse_comparison.png', 'Reds_d', higher_is_better=False)
 
-    # 2. MAE
+    # 2. MAE (Đã áp dụng fix khoảng cách)
     mae_vals = [results_error[m]['MAE'] for m in models_list]
     plot_comparison('MAE', mae_vals, 'So sánh Sai số MAE', 
-                   'mae_comparison.png', 'Purples_d', higher_is_better=False)
+                    'mae_comparison.png', 'Purples_d', higher_is_better=False)
 
     # 3. Precision
     prec_vals = [results_ranking[m]['Precision@10'] for m in models_list]
     plot_comparison('Precision@10', prec_vals, 'So sánh Precision@10', 
-                   'precision_comparison.png', 'Greens_d', higher_is_better=True)
+                    'precision_comparison.png', 'Greens_d', higher_is_better=True)
 
     # 4. Recall
     rec_vals = [results_ranking[m]['Recall@10'] for m in models_list]
     plot_comparison('Recall@10', rec_vals, 'So sánh Recall@10', 
-                   'recall_comparison.png', 'Blues_d', higher_is_better=True)
+                    'recall_comparison.png', 'Blues_d', higher_is_better=True)
 
-    # 5. Scatter Plot (Alpha)
+    # 5. Scatter Plot (Alpha) - CHỈNH SỬA THEO YÊU CẦU UI
     if user_interactions:
         plt.figure(figsize=(10, 6))
+        
+        # Vẽ điểm
         plt.scatter(user_interactions, alpha_values, alpha=0.6, c=alpha_values, cmap='coolwarm')
-        plt.colorbar(label='Giá trị Alpha')
-        plt.title(f'Alpha thích nghi (N={len(all_users)} users)')
-        plt.xlabel('Số phim đã xem (Log Scale)')
-        plt.ylabel('Trọng số Alpha (Thiên về CF)')
+        
+        # Tiêu đề: Font 16, In đậm, Cách xa
+        plt.title(f'Alpha thích nghi', 
+                  fontsize=16, fontweight='bold', pad=20)
+        
+        # Nhãn trục X: Font 14, In đậm, Cách xa
+        plt.xlabel('Số phim đã xem (Log Scale)', 
+                   fontsize=14, fontweight='bold', labelpad=15)
+        
+        # Nhãn trục Y: Font 14, In đậm, Cách xa
+        plt.ylabel('Trọng số Alpha', 
+                   fontsize=14, fontweight='bold', labelpad=15)
+        
+        # Tăng kích thước số trên trục
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+
         plt.xscale('log')
+        plt.grid(True, which="both", ls="--", alpha=0.5)
+        
+        plt.tight_layout()
         plt.savefig(f'{OUTPUT_DIR}/alpha_adaptive_analysis.png')
         plt.close()
         print(f"   Saved: {OUTPUT_DIR}/alpha_adaptive_analysis.png")
