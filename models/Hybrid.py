@@ -3,9 +3,7 @@ import numpy as np
 import os
 import sys
 
-# --- FIX COLAB IMPORT ---
 sys.path.append(os.getcwd())
-# ------------------------
 
 from models.ContentBased import ContentBasedModel
 from models.CollaborativeFiltering import CollaborativeModel
@@ -18,11 +16,10 @@ class AdaptiveHybridModel:
         """
         print(">> [Hybrid] Initializing Adaptive Hybrid System...")
 
-        # --- FIX PATH: TỰ ĐỘNG TÌM ROOT ---
         # 1. Tìm vị trí file Hybrid.py
         current_file = os.path.abspath(__file__) 
-        models_dir = os.path.dirname(current_file)  # .../models
-        project_root = os.path.dirname(models_dir)  # .../HYBRID-MOVIE-RECOMMENDER
+        models_dir = os.path.dirname(current_file) 
+        project_root = os.path.dirname(models_dir) 
         
         # 2. Thiết lập đường dẫn data tuyệt đối
         if data_dir is None:
@@ -43,7 +40,6 @@ class AdaptiveHybridModel:
         self.cf_model = CollaborativeModel(data_dir=self.data_dir)
         self.user_manager = UserManager(data_dir=self.data_dir)
 
-        # 4. Logic cũ giữ nguyên
         self.movies = self.cb_model.movies
         self.is_ready = (
             self.cb_model.is_ready and
@@ -51,7 +47,6 @@ class AdaptiveHybridModel:
             self.user_manager.is_ready
         )
 
-        # 5. CACHE (Giữ nguyên logic cũ)
         self.max_interact_count = 1
         if self.is_ready and self.user_manager.user_counts:
             real_max = max(self.user_manager.user_counts.values())
@@ -73,14 +68,12 @@ class AdaptiveHybridModel:
         # Alpha tăng nhanh lúc đầu, chậm dần về sau
         alpha = np.log(1 + user_count) / np.log(1 + self.max_interact_count)
 
-        # Clip trong khoảng [0.0, 0.8]
-        # (Vẫn giữ lại 20% cho CB để đảm bảo diversity)
-        return float(np.clip(alpha, 0.0, 0.8))
+        return float(np.clip(alpha, 0.0, 0.95))
 
     def get_popular_recommendations(self, top_k=10):
         """
         Fallback: Trả về phim phổ biến nhất nếu User mới tinh.
-        Dựa vào vote_count và vote_average trong file movies.
+        (GIỮ NGUYÊN KHÔNG ĐỔI)
         """
         if self.movies is None or self.movies.empty:
             return pd.DataFrame()
@@ -92,60 +85,114 @@ class AdaptiveHybridModel:
         else:
             pop_movies = self.movies.head(top_k)
 
-        # Format cho giống output chuẩn
-        pop_movies['score'] = pop_movies['rating'] # Lấy rating gốc làm score
+        pop_movies['score'] = pop_movies['rating'] 
         cols_map = {'tag': 'tags', 'rating': 'avg_rating', 'vote_count': 'votes'}
         return pop_movies.rename(columns=cols_map).reset_index(drop=True)
 
     def recommend(self, user_id: int, top_k: int = 10) -> pd.DataFrame:
         """
-        Hàm gợi ý chính (Updated Logic).
+        Hàm gợi ý Hybrid: Đã sửa lại logic để lấy điểm thật (Predict) 
+        thay vì điền 0, và đảm bảo trả về Title/Genres.
         """
         if not self.is_ready: return pd.DataFrame()
 
-        # Nếu user chưa từng có trong hệ thống (New User / Cold Start)
+        # --- 0. XỬ LÝ COLD START (User mới tinh) ---
         if user_id not in self.user_manager.user_counts:
-            # CB hay CF đều vô dụng lúc này -> Trả về Popular Items
             return self.get_popular_recommendations(top_k)
 
-        # 1. Tính trọng số Alpha (Updated Logic 1)
+        # --- 1. TÍNH ALPHA ---
         alpha = self.calculate_adaptive_weight(user_id)
-
-        # 2. Lấy ứng viên (Candidate Generation)
+        
+        # --- 2. LẤY ỨNG VIÊN (Candidate Generation) ---
+        # Lấy danh sách ứng viên rộng (gấp 5 lần cần thiết để merge)
         candidate_k = top_k * 5
-
+        
         df_cb = self.cb_model.recommend(user_id, top_k=candidate_k)
         df_cf = self.cf_model.recommend(user_id, top_k=candidate_k, k_neighbors=50)
 
-        # 3. Merge & Fillna
+        # Nếu cả 2 đều rỗng -> Trả về rỗng
         if df_cb.empty and df_cf.empty: return pd.DataFrame()
 
         cb_scores = df_cb[['movieId', 'score']].rename(columns={'score': 'score_cb'}) if not df_cb.empty else pd.DataFrame(columns=['movieId', 'score_cb'])
         cf_scores = df_cf[['movieId', 'score']].rename(columns={'score': 'score_cf'}) if not df_cf.empty else pd.DataFrame(columns=['movieId', 'score_cf'])
 
+        # --- 3. MERGE OUTER (Gộp danh sách) ---
+        # Giữ lại NaN để biết giá trị nào bị thiếu
         merged = pd.merge(cb_scores, cf_scores, on='movieId', how='outer')
-        merged['score_cb'] = merged['score_cb'].fillna(merged['score_cf'])
-        merged['score_cf'] = merged['score_cf'].fillna(merged['score_cb'])
 
-        # 4. Final Score
+        # --- 4. DỰ ĐOÁN BÙ (FILL MISSING SCORES) ---
+        def fill_missing_scores(row):
+            mid = int(row['movieId'])
+            s_cb = row['score_cb']
+            s_cf = row['score_cf']
+            
+            # Nếu thiếu điểm CB -> Gọi CB Model dự đoán
+            if pd.isna(s_cb):
+                try: s_cb = self.cb_model.predict(user_id, mid)
+                except: s_cb = 0.0
+            
+            # Nếu thiếu điểm CF -> Gọi CF Model dự đoán
+            if pd.isna(s_cf):
+                try: s_cf = self.cf_model.predict(user_id, mid, k_neighbors=50)
+                except: s_cf = 0.0
+            
+            return pd.Series([s_cb, s_cf])
+
+        # Áp dụng hàm điền khuyết
+        merged[['score_cb', 'score_cf']] = merged.apply(fill_missing_scores, axis=1)
+
+        # --- 5. TÍNH FINAL SCORE ---
+        # Lúc này cả 2 cột đều đã có số thật, áp dụng công thức trọng số
         merged['final_score'] = (alpha * merged['score_cf']) + ((1 - alpha) * merged['score_cb'])
 
-        # 5. Format Result
+        # --- 6. SẮP XẾP & LẤY TOP K ---
         merged = merged.sort_values(by='final_score', ascending=False).head(top_k)
 
+        # --- 7. GẮN METADATA (Title, Genres...) ---
         final_ids = merged['movieId'].values
-        result_meta = self.movies[self.movies['movieId'].isin(final_ids)].copy()
+        
+        # Lấy thông tin gốc từ self.movies
+        meta_info = self.movies[self.movies['movieId'].isin(final_ids)].copy()
+        
+        # Merge lại để lấy thông tin phim
+        final_result = pd.merge(
+            merged[['movieId', 'final_score', 'score_cb', 'score_cf']], 
+            meta_info, 
+            on='movieId', 
+            how='left'
+        )
 
-        final_result = pd.merge(merged[['movieId', 'final_score', 'score_cb', 'score_cf']], result_meta, on='movieId', how='left')
-        final_result = final_result.sort_values(by='final_score', ascending=False)
+        # --- 8. FORMAT & OUTPUT ---
+        cols_map = {
+            'final_score': 'score',
+            'rating': 'avg_rating', 
+            'vote_count': 'votes',
+            'tag': 'tags'
+        }
+        final_result = final_result.rename(columns=cols_map)
 
-        cols_map = {'final_score': 'score', 'tag': 'tags', 'rating': 'avg_rating', 'vote_count': 'votes'}
-        return final_result.rename(columns=cols_map).reset_index(drop=True)
+        # Xử lý số liệu Votes
+        if 'votes' in final_result.columns:
+            final_result['votes'] = final_result['votes'].fillna(0).astype(int)
+
+        desired_order = [
+            'movieId', 'title', 'genres',       # Thông tin cơ bản
+            'score', 'score_cb', 'score_cf',    # Điểm số
+            'avg_rating', 'votes', 'tags'       # Thông tin bổ trợ
+        ]
+        
+        # Chỉ lấy những cột thực sự tồn tại trong kết quả
+        final_cols = [c for c in desired_order if c in final_result.columns]
+
+        return final_result[final_cols].reset_index(drop=True)
 
     def recommend_for_user(self, user_id: int, top_k: int = 10) -> pd.DataFrame:
         return self.recommend(user_id, top_k)
 
     def predict(self, user_id: int, movie_id: int) -> float:
+        """
+        Dự đoán điểm số.
+        """
         if not self.is_ready: return 0.0
 
         # Check tồn tại để tránh lỗi
@@ -155,9 +202,11 @@ class AdaptiveHybridModel:
         alpha = self.calculate_adaptive_weight(user_id)
         cf_pred = self.cf_model.predict(user_id, movie_id, k_neighbors=50)
         cb_pred = self.cb_model.predict(user_id, movie_id)
+
         final_pred = (alpha * cf_pred) + ((1 - alpha) * cb_pred)
         return float(np.clip(final_pred, 0.5, 5.0))
 
+    # --- CÁC HÀM UI HELPER ---
     def search_user(self, keyword, limit=10):
         return self.user_manager.search_user(keyword, limit)
 
@@ -170,7 +219,7 @@ class AdaptiveHybridModel:
 if __name__ == "__main__":
     # 1. KHỞI TẠO MÔ HÌNH
     print("\n" + "="*60)
-    print("🚀 KHỞI TẠO HỆ THỐNG ADAPTIVE HYBRID...")
+    print("🚀 KHỞI TẠO HỆ THỐNG ADAPTIVE HYBRID (OPTIMIZED V1)...")
     print("="*60)
     hybrid = AdaptiveHybridModel()
     
@@ -250,7 +299,9 @@ if __name__ == "__main__":
         # Hiển thị bảng chi tiết để debug xem điểm số đến từ đâu
         # score_cb: Điểm nội dung, score_cf: Điểm cộng đồng, score: Điểm tổng hợp
         cols = ['title', 'score', 'score_cb', 'score_cf', 'avg_rating']
-        print(recs[cols].to_string(index=False))
+        # Lọc cột nếu tồn tại để tránh lỗi print
+        print_cols = [c for c in cols if c in recs.columns]
+        print(recs[print_cols].to_string(index=False))
     else:
         print("⚠️ Không tìm thấy gợi ý nào.")
 

@@ -16,7 +16,6 @@ st.set_page_config(
     layout="wide"
 )
 
-
 st.markdown("""
 <style>
 /* ===== HARD REMOVE SIDEBAR COLLAPSE BUTTON (SVG TITLE FIX) ===== */
@@ -35,24 +34,23 @@ svg title {
 }
 </style>
 """, unsafe_allow_html=True)
+
 # =========================================================
-# CUSTOM SIDEBAR CSS
+# CUSTOM SIDEBAR CSS (LIGHT THEME VERSION)
 # =========================================================
 st.markdown("""
 <style>
 /* ===== SIDEBAR CONTAINER ===== */
 section[data-testid="stSidebar"] {
-     background-color: #2b2f36;
-
-
-
-
-    border-right: 1px solid #1e293b;
+    /* Đổi nền thành Xám rất nhạt (gần trắng) để tệp với nội dung bên phải */
+    background-color: #f8fafc; 
+    border-right: 1px solid #e2e8f0;
 }
 
 /* ===== SIDEBAR TEXT ===== */
 section[data-testid="stSidebar"] * {
-    color: #e5e7eb !important;
+    /* Đổi chữ thành màu tối (Dark Slate) để đọc được trên nền sáng */
+    color: #334155 !important; 
     font-family: "Inter", system-ui, sans-serif;
 }
 
@@ -61,6 +59,7 @@ section[data-testid="stSidebar"] h1 {
     font-size: 1.3rem;
     font-weight: 700;
     margin-bottom: 0.25rem;
+    color: #0f172a !important; /* Tiêu đề đậm hơn */
 }
 
 /* ===== RADIO GROUP ===== */
@@ -68,50 +67,79 @@ div[role="radiogroup"] {
     gap: 8px;
 }
 
-/* ===== RADIO ITEM ===== */
+/* ===== RADIO ITEM (NÚT BẤM) ===== */
 div[role="radiogroup"] label {
-     background-color: #2b2f36;
-    border: 2px solid #4b5563;
-    border-radius: 14px;
-    padding: 12px 14px;
+    width: 100%;
+    display: flex;
+    align-items: center;        
+
+    /* Nền nút là màu Trắng để nổi lên trên nền xám nhạt của sidebar */
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 10px 14px;
     margin-bottom: 6px;
     font-weight: 500;
-    transition: all 0.25s ease;
+    color: #475569 !important; /* Chữ trong nút màu xám đậm */
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Bóng mờ nhẹ */
 }
 
 /* Hover */
 div[role="radiogroup"] label:hover {
-    background: #020617;
+    background: #f1f5f9; /* Khi di chuột vào thì xám nhẹ */
     border-color: #6366f1;
+    color: #6366f1 !important;
     transform: translateX(2px);
 }
 
-/* Checked */
+/* Checked (Đang chọn) */
 div[role="radiogroup"] label[data-checked="true"] {
-    background: linear-gradient(90deg, #4f46e5, #6366f1);
+    /* Giữ nguyên gradient tím xanh để làm điểm nhấn đẹp mắt */
+    background: linear-gradient(135deg, #4f46e5, #6366f1);
     border: none;
-    color: white !important;
+    color: white !important; /* Chữ chuyển thành trắng khi được chọn */
     font-weight: 700;
-    box-shadow: 0 8px 20px rgba(99,102,241,0.35);
+    box-shadow: 0 4px 12px rgba(99,102,241,0.3);
 }
 
 /* ===== SCROLLBAR ===== */
 section[data-testid="stSidebar"] ::-webkit-scrollbar {
-    width: 6px;
+    width: 5px;
 }
 
 section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #4f46e5, #6366f1);
+    background: #cbd5e1;
     border-radius: 10px;
+}
+            
+/* ===== TÙY CHỈNH CON TRỎ CHUỘT CHO SELECTBOX (TAB 1) ===== */
+
+/* 1. Khi hover vào vùng bao quanh ô chọn (gồm cả mũi tên và text) */
+div[data-baseweb="select"] > div:hover {
+    cursor: pointer !important;
+}
+
+/* 2. Ép con trỏ bàn tay khi di chuột vào icon mũi tên "v" */
+div[data-baseweb="select"] svg {
+    cursor: pointer !important;
+}
+
+/* 3. Hiệu ứng đổi màu icon khi hover (như đã nói ở trên) */
+div[data-baseweb="select"]:hover svg {
+    fill: #6366f1 !important;
+    transition: all 0.2s ease;
+}
+
+/* 4. Đảm bảo các dòng trong danh sách sổ xuống cũng có con trỏ bàn tay */
+ul[role="listbox"] li {
+    cursor: pointer !important;
 }
 
 /* ===== FOOTER HIDE ===== */
 footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
-
-
 
 # =========================================================
 # INIT MODEL
@@ -132,8 +160,6 @@ except Exception as e:
 if "session_userId" not in st.session_state:
     st.session_state.session_userId = None
     
-
-
 # Hàm hiển thị dataframe an toàn
 def safe_display(df, cols):
     return df[[c for c in cols if c in df.columns]].copy()
@@ -178,18 +204,19 @@ def format_result_df(df):
 # =========================================================
 # SIDEBAR
 # =========================================================
-st.sidebar.title("🎬 Movie Recommender")
+st.sidebar.title("🎬 Movie Recommender System")
 
 
 tab = st.sidebar.radio(
     "📂 Chức năng hệ thống",
     [
         "👤 Quản lý Người dùng (User)",
-        "📚 Lọc theo Nội dung (Content-Based)",
-        "👥 Lọc cộng đồng (Collaborative)",
-        "🧠 Gợi ý Lai (Adaptive Hybrid)",
+        "📚 Gợi ý theo Nội dung (Content-Based)",
+        "👥 Gợi ý theo Cộng đồng (Collaborative)",
+        "🧠 Gợi ý Kết hợp (Adaptive Hybrid)",
         "📊 Báo cáo Đánh giá (Evaluation)"
-    ]
+    ],
+    label_visibility="collapsed"
 )
 
 # =========================================================
@@ -261,7 +288,7 @@ if tab == "👤 Quản lý Người dùng (User)":
             c3.metric("📊 Phân loại", profile.get("interaction_level", "N/A"))
             
             st.markdown("---")
-            cl, cr = st.columns([2,8])
+            cl, cr = st.columns([3,7])
             with cl:
                 st.markdown("**🎭 Thể loại yêu thích:**")
                 genres = profile.get("top_genres", [])
@@ -276,11 +303,11 @@ if tab == "👤 Quản lý Người dùng (User)":
             st.warning(f"⚠️ User ID {uid_display} không tồn tại.")
 
 # =========================================================
-# TAB 2 – CONTENT BASED (CÓ SCROLLBAR)
+# TAB 2 – CONTENT BASED (STRICT MODE)
 # =========================================================
-elif tab == "📚 Lọc theo Nội dung (Content-Based)":
+elif tab == "📚 Gợi ý theo Nội dung (Content-Based)":
     st.title("📚 Content-Based Filtering")
-    st.caption("Gợi ý dựa trên sự tương đồng nội dung phim (Genres, Tags)")
+    st.caption("Gợi ý những bộ phim có phong cách và chủ đề tương tự với những gì bạn yêu thích (Genres, Tags).")
     st.markdown("---")
 
     uid = st.session_state.session_userId
@@ -292,7 +319,9 @@ elif tab == "📚 Lọc theo Nội dung (Content-Based)":
         recs = hybrid.cb_model.recommend(uid, top_k=10)
         
         if recs.empty:
-            st.info("ℹ️ Không có gợi ý.")
+            # === BÁO LỖI NẾU FAIL (KHÔNG FALLBACK) ===
+            st.warning("⚠️ Không tìm thấy gợi ý theo nội dung.")
+            st.caption("👉 Nguyên nhân: User này chưa xem/đánh giá phim nào (Cold Start), hoặc dữ liệu phim thiếu tags/genres.")
         else:
             cols_to_show = ["title", "genres", "tags", "score"]
             df_show = safe_display(recs, cols_to_show)
@@ -302,24 +331,23 @@ elif tab == "📚 Lọc theo Nội dung (Content-Based)":
                 "title": "Tên Phim", "genres": "Thể loại", "tags": "Từ khóa", "score": "Điểm dự đoán"
             })
             
-            # QUAN TRỌNG: use_container_width=False để hiện thanh cuộn ngang nếu nội dung dài
             st.dataframe(
                 df_show,
                 use_container_width=True,
                 column_config={
-                    "Tên Phim": st.column_config.TextColumn(width="medium"),
+                    "Tên Phim": st.column_config.TextColumn(width="large"),
                     "Thể loại": st.column_config.TextColumn(width="medium"),
-                    "Tags (Từ khóa)": st.column_config.TextColumn(width="large"), # Cột Tags rất dài, cần width large
+                    "Từ khóa": st.column_config.TextColumn(width="medium"),
                     "Điểm dự đoán": st.column_config.NumberColumn(format="%.2f")
                 }
             )
 
 # =========================================================
-# TAB 3 – COLLABORATIVE (ĐÃ SỬA LỖI HIỂN THỊ HÀNG XÓM ẢO)
+# TAB 3 – COLLABORATIVE (ĐÃ NÂNG CẤP LOGIC HIỂN THỊ)
 # =========================================================
-elif tab == "👥 Lọc cộng đồng (Collaborative)":
+elif tab == "👥 Gợi ý theo Cộng đồng (Collaborative)":
     st.title("👥 Collaborative Filtering")
-    st.caption("Gợi ý dựa trên người dùng tương đồng (User-Based KNN)")
+    st.caption("Gợi ý những bộ phim mà những người có cùng sở thích với bạn đang đánh giá cao.")
     st.markdown("---")
 
     uid = st.session_state.session_userId
@@ -327,22 +355,21 @@ elif tab == "👥 Lọc cộng đồng (Collaborative)":
     if uid is None:
         st.warning("⚠️ Vui lòng quay lại tab 'Quản lý Người dùng (User)' để chọn User trước.")
     else:
-        # 1. Gợi ý phim
+        # --- BƯỚC 1: LẤY DỮ LIỆU (Lấy cả 2 trước khi hiển thị) ---
+        recs = hybrid.cf_model.recommend(uid, top_k=10)
+        sim_users = hybrid.cf_model.get_similar_users(uid, top_n=10)
+
+        # --- BƯỚC 2: HIỂN THỊ DANH SÁCH PHIM GỢI Ý ---
         st.subheader(f"🎯 Phim đề xuất cho User {uid}")
         
-        # Gọi model
-        recs = hybrid.cf_model.recommend(uid, top_k=10)
-        
         if recs.empty:
-            # === TRƯỜNG HỢP KHÔNG CÓ GỢI Ý ===
-            st.info("ℹ️ Không tìm thấy gợi ý phù hợp.")
-            st.caption("Nguyên nhân: User mới chưa có đủ đánh giá hoặc không tìm thấy người dùng nào có gu tương đồng (KNN Distance quá xa).")
-            # Dừng lại tại đây, không hiển thị phần Similar Users bên dưới nữa
-            
+            st.info("ℹ️ Không tìm thấy phim để gợi ý.")
+            if not sim_users:
+                st.caption("👉 Nguyên nhân: Không tìm thấy 'Hàng xóm' nào đủ giống bạn (Similarity quá thấp).")
+            else:
+                st.caption("👉 Nguyên nhân: Tìm thấy Hàng xóm, nhưng họ chưa xem phim nào MỚI mà bạn chưa xem (Hoặc bạn đã xem hết phim họ thích).")
         else:
-            # === TRƯỜNG HỢP CÓ GỢI Ý (HIỂN THỊ CẢ PHIM VÀ NGƯỜI DÙNG) ===
-            
-            # A. Hiển thị bảng phim
+            # Xử lý hiển thị bảng phim
             cols_to_show = ["title", "genres", "score"]
             df_show = safe_display(recs, cols_to_show)
             df_show = format_result_df(df_show)
@@ -355,58 +382,63 @@ elif tab == "👥 Lọc cộng đồng (Collaborative)":
                 df_show,
                 use_container_width=True,
                 column_config={
-                    "Tên Phim": st.column_config.TextColumn(width="medium"),
+                    "Tên Phim": st.column_config.TextColumn(width="large"),
                     "Thể loại": st.column_config.TextColumn(width="medium"),
                     "Điểm Dự Đoán": st.column_config.NumberColumn(format="%.2f")
                 }
             )
-        
-            st.divider()
-            
-            # B. Tìm người tương đồng (CHỈ HIỆN KHI CÓ RECS)
-            st.subheader("👥 Top Người dùng có Gu giống bạn")
-            st.caption("Những người dùng này đã đóng góp vào kết quả gợi ý ở trên.")
-            
-            sim_users = hybrid.cf_model.get_similar_users(uid, top_n=10)
-            
-            if sim_users:
-                df_sim = pd.DataFrame(sim_users)
-                
-                # Xử lý hiển thị %
-                if 'similarity_score' in df_sim.columns:
-                    df_sim['similarity_score'] = df_sim['similarity_score'] * 100
-                    
-                df_sim = format_result_df(df_sim) 
 
-                # Đổi tên cột
-                rename_map = {
-                    'id': 'User ID', 
-                    'similarity_score': 'Độ tương đồng (%)',
-                    'common_count': 'Số lượng phim chung', 
-                    'common_movies': 'Danh sách phim chung (Sample)'
+        st.divider()
+
+        # --- BƯỚC 3: HIỂN THỊ HÀNG XÓM (ĐỘC LẬP VỚI BƯỚC 2) ---
+        st.subheader("👥 Top Người dùng có Gu giống bạn")
+        st.caption("Hệ thống tìm kiếm những người có lịch sử đánh giá tương đồng nhất với bạn để tham khảo.")
+
+        if sim_users:
+            # Có hàng xóm -> Hiển thị bảng
+            df_sim = pd.DataFrame(sim_users)
+            
+            # Xử lý hiển thị %
+            if 'similarity_score' in df_sim.columns:
+                df_sim['similarity_score'] = df_sim['similarity_score'] * 100
+                
+            df_sim = format_result_df(df_sim) 
+
+            # Đổi tên cột cho đẹp
+            rename_map = {
+                'id': 'User ID', 
+                'similarity_score': 'Độ tương đồng (%)',
+                'common_count': 'Số lượng phim chung', 
+                'common_movies': 'Danh sách phim chung (Sample)'
+            }
+            cols_to_rename = {k: v for k, v in rename_map.items() if k in df_sim.columns}
+            df_sim.rename(columns=cols_to_rename, inplace=True)
+            
+            st.dataframe(
+                df_sim, 
+                use_container_width=True,
+                column_config={
+                    "User ID": st.column_config.NumberColumn(format="%d"),
+                    "Độ tương đồng (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Số lượng phim chung": st.column_config.NumberColumn(format="%d 🎬"),
+                    "Danh sách phim chung (Sample)": st.column_config.TextColumn(width="large")
                 }
-                cols_to_rename = {k: v for k, v in rename_map.items() if k in df_sim.columns}
-                df_sim.rename(columns=cols_to_rename, inplace=True)
-                
-                st.dataframe(
-                    df_sim, 
-                    use_container_width=True,
-                    column_config={
-                        "User ID": st.column_config.NumberColumn(format="%d"),
-                        "Độ tương đồng (%)": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Số lượng phim chung": st.column_config.NumberColumn(format="%d 🎬"),
-                        "Danh sách phim chung (Sample)": st.column_config.TextColumn(width="large")
-                    }
-                )
-            else:
-                st.text("Không thể trích xuất danh sách người dùng tương đồng.")
+            )
+        else:
+            # Không có hàng xóm -> Báo lỗi cụ thể
+            st.warning("⚠️ Không tìm thấy người dùng tương đồng nào.")
+            st.markdown("""
+            **Lý do có thể:**
+            1. Bạn là User mới (Cold Start).
+            2. Gu phim của bạn quá "độc lạ", không giống ai trong hệ thống (Similarity < 0.1).
+            """)
 
 # =========================================================
-# TAB 4 – ADAPTIVE HYBRID (FINAL FIXED VERSION)
+# TAB 4 – ADAPTIVE HYBRID (COMPLETE FIX & DYNAMIC UI)
 # =========================================================
-elif tab == "🧠 Gợi ý Lai (Adaptive Hybrid)":
+elif tab == "🧠 Gợi ý Kết hợp (Adaptive Hybrid)":
     st.title("🧠 Adaptive Hybrid System")
-    st.caption("Kết hợp thông minh giữa CB và CF dựa trên độ tin cậy dữ liệu.")
+    st.caption("Tự động tối ưu hóa giữa sở thích cá nhân và xu hướng cộng đồng để đưa ra gợi ý chính xác nhất cho từng giai đoạn trải nghiệm.")
     st.markdown("---")
 
     uid = st.session_state.session_userId
@@ -415,32 +447,53 @@ elif tab == "🧠 Gợi ý Lai (Adaptive Hybrid)":
         st.warning("⚠️ Vui lòng quay lại tab 'Quản lý Người dùng (User)' để chọn User trước.")
     else:
         # ---------------------------------------------------------
-        # BƯỚC 1: TÍNH TOÁN TRỌNG SỐ (ALPHA) & KIỂM TRA CF
+        # BƯỚC 1: TÍNH TOÁN TRỌNG SỐ (ALPHA) & KIỂM TRA MÔ HÌNH
         # ---------------------------------------------------------
         
         # 1.1 Tính Alpha lý thuyết dựa trên số lượng rating
         raw_alpha = hybrid.calculate_adaptive_weight(uid)
         
-        # 1.2 [QUAN TRỌNG] Kiểm tra thực tế: CF có chạy được không?
-        # Nếu CF trả về rỗng, ta phải coi như CF thất bại hoàn toàn.
+        # 1.2 Kiểm tra thực tế: CF có chạy được không?
         try:
             cf_check = hybrid.cf_model.recommend(uid, top_k=5)
             is_cf_failed = cf_check.empty
         except Exception:
             is_cf_failed = True
 
-        # 1.3 Quyết định Alpha cuối cùng dùng cho UI
-        if is_cf_failed:
-            alpha = 0.0  # Ép về 0 (Content-Based only)
+        # 1.3 Kiểm tra thực tế: CB có chạy được không?
+        try:
+            cb_check = hybrid.cb_model.recommend(uid, top_k=5)
+            is_cb_failed = cb_check.empty
+        except Exception:
+            is_cb_failed = True
+
+        # 1.4 Quyết định Alpha cuối cùng và logic hiển thị
+        bar_color_cf = "#EF553B" # Cam
+        bar_color_cb = "#00CC96" # Xanh
+        
+        if is_cf_failed and is_cb_failed:
+            alpha = 0.5 
+            reason_msg = "⚠️ Cả 2 mô hình đều thiếu dữ liệu ➔ Dùng danh mục Phổ biến"
+            bar_color_cf = "#d3d3d3"
+            bar_color_cb = "#d3d3d3"
+            status_color = "red"
+        elif is_cf_failed:
+            alpha = 0.0  # Ép về 100% CB
             reason_msg = "Không tìm thấy người dùng tương đồng ➔ Chuyển về 100% Content-Based"
-            bar_color_cf = "#d3d3d3" # Màu xám (Disable)
+            bar_color_cf = "#d3d3d3"
+            status_color = "#EF553B"
+        elif is_cb_failed:
+            alpha = 1.0  # Ép về 100% CF
+            reason_msg = "Không đủ lịch sử sở thích ➔ Chuyển về 100% Collaborative Filtering"
+            bar_color_cb = "#d3d3d3"
+            status_color = "#EF553B"
         else:
             alpha = raw_alpha
             rating_count = hybrid.user_manager.user_counts.get(uid, 0)
-            reason_msg = f"✅ Dựa trên {rating_count} lượt đánh giá của User"
-            bar_color_cf = "#EF553B" # Màu cam (Active)
+            reason_msg = f"Dựa trên {rating_count} lượt đánh giá của User"
+            status_color = "gray"
 
-        # Tính phần trăm để vẽ biểu đồ
+        # Tính phần trăm biểu đồ
         pct_cf = alpha * 100
         pct_cb = (1 - alpha) * 100
 
@@ -453,15 +506,12 @@ elif tab == "🧠 Gợi ý Lai (Adaptive Hybrid)":
             c1, c2, c3 = st.columns([1, 2, 1])
 
             with c1:
-                st.markdown(f"""
-                <div style="text-align: center;">
-                    <h3 style="margin:0; color: #00CC96;">{pct_cb:.1f}%</h3>
-                    <p style="font-size: 0.9em; color: gray;">🧩 Content-Based</p>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"""<div style="text-align: center;">
+                    <h3 style="margin:0; color: {bar_color_cb};">{pct_cb:.1f}%</h3>
+                    <p style="font-size: 0.9em; color: gray;">📚  Content-Based</p>
+                </div>""", unsafe_allow_html=True)
 
             with c2:
-                # Vẽ thanh Bar HTML
                 st.markdown(f"""
                 <div style="margin-top: 15px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8em;">
@@ -470,80 +520,72 @@ elif tab == "🧠 Gợi ý Lai (Adaptive Hybrid)":
                         <span>Cộng đồng</span>
                     </div>
                     <div style="width: 100%; background-color: #e0e0e0; border-radius: 10px; height: 15px; overflow: hidden; display: flex;">
-                        <div style="width: {pct_cb}%; background-color: #00CC96; height: 100%;"></div>
+                        <div style="width: {pct_cb}%; background-color: {bar_color_cb}; height: 100%;"></div>
                         <div style="width: {pct_cf}%; background-color: {bar_color_cf}; height: 100%;"></div>
                     </div>
-                    <div style="text-align: center; font-size: 0.75em; color: { 'red' if is_cf_failed else 'gray' }; margin-top: 5px;">
+                    <div style="text-align: center; font-size: 0.75em; color: {status_color}; margin-top: 5px;">
                         <i>{reason_msg}</i>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
 
             with c3:
-                cf_text_color = "#EF553B" if not is_cf_failed else "#b0b0b0"
-                st.markdown(f"""
-                <div style="text-align: center;">
-                    <h3 style="margin:0; color: {cf_text_color};">{pct_cf:.1f}%</h3>
+                st.markdown(f"""<div style="text-align: center;">
+                    <h3 style="margin:0; color: {bar_color_cf};">{pct_cf:.1f}%</h3>
                     <p style="font-size: 0.9em; color: gray;">👥 Collaborative</p>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
 
         # ---------------------------------------------------------
-        # BƯỚC 3: TẠO GỢI Ý (RECOMMENDATION LOGIC)
+        # BƯỚC 3: TẠO GỢI Ý (DYNAMIC RECOMMENDATION)
         # ---------------------------------------------------------
         st.subheader("🎬 Kết quả Gợi ý Cuối cùng")
-        
         recs = pd.DataFrame() 
+        cols_to_show = ["title", "genres", "score", "score_cb", "score_cf"]
 
-        with st.spinner("Đang tổng hợp kết quả đa mô hình..."):
-            if is_cf_failed:
-                # === TRƯỜNG HỢP 1: FALLBACK VỀ CONTENT-BASED ===
-                # Gọi trực tiếp CB model để đảm bảo kết quả GIỐNG HỆT Tab 2
+        with st.spinner("Đang tổng hợp kết quả..."):
+            if is_cf_failed and is_cb_failed:
+                recs = hybrid.get_popular_recommendations(top_k=10)
+                cols_to_show = ["title", "genres", "avg_rating", "votes"]
+            elif is_cf_failed:
                 recs = hybrid.cb_model.recommend(uid, top_k=10)
-                
                 if not recs.empty:
-                    # Tạo các cột giả lập để hiển thị đúng định dạng Hybrid
-                    recs["score_cb"] = recs["score"]  # Điểm CB chính là điểm gốc
-                    recs["score_cf"] = 0.0            # Điểm CF bằng 0
-                    # "score" giữ nguyên là điểm CB
+                    recs["score_cb"] = recs["score"]
+                    cols_to_show = ["title", "genres", "score", "score_cb"]
+            elif is_cb_failed:
+                recs = hybrid.cf_model.recommend(uid, top_k=10)
+                if not recs.empty:
+                    recs["score_cf"] = recs["score"]
+                    cols_to_show = ["title", "genres", "score", "score_cf"]
             else:
-                # === TRƯỜNG HỢP 2: CHẠY HYBRID BÌNH THƯỜNG ===
                 recs = hybrid.recommend(uid, top_k=10)
-        
+
         # ---------------------------------------------------------
-        # BƯỚC 4: HIỂN THỊ KẾT QUẢ
+        # BƯỚC 4: HIỂN THỊ KẾT QUẢ (DYNAMICS COLUMNS)
         # ---------------------------------------------------------
         if recs.empty:
-            st.warning("Không tìm thấy gợi ý phù hợp.")
+            st.error("❌ Không thể tạo gợi ý cho người dùng này.")
         else:
-            # Danh sách cột cần hiển thị
-            cols_to_show = ["title", "genres", "score", "score_cb", "score_cf"]
-            
-            # Hàm safe_display lọc cột an toàn
-            df_show = safe_display(recs, cols_to_show)
-            
-            # Format dữ liệu (chuyển list thành string, index lại từ 1)
+            # Chỉ lấy các cột thực sự tồn tại trong DataFrame
+            existing_cols = [c for c in cols_to_show if c in recs.columns]
+            df_show = safe_display(recs, existing_cols)
             df_show = format_result_df(df_show)
             
-            # Đổi tên cột sang tiếng Việt
-            df_show = df_show.rename(columns={
-                "title": "Tên Phim", 
-                "genres": "Thể loại",
-                "score": "Điểm Hybrid", 
-                "score_cb": "Điểm CB",
-                "score_cf": "Điểm CF"
-            })
-
-            # Hiển thị DataFrame
+            rename_dict = {
+                "title": "Tên Phim", "genres": "Thể loại",
+                "score": "Điểm Hybrid", "score_cb": "Điểm CB", "score_cf": "Điểm CF",
+                "avg_rating": "Điểm TB", "votes": "Lượt đánh giá"
+            }
+            
             st.dataframe(
-                df_show,
+                df_show.rename(columns=rename_dict),
                 use_container_width=True,
                 column_config={
                     "Tên Phim": st.column_config.TextColumn(width="medium"),
-                    "Thể loại": st.column_config.TextColumn(width="medium"),
                     "Điểm Hybrid": st.column_config.NumberColumn(format="%.2f"),
                     "Điểm CB": st.column_config.NumberColumn(format="%.2f"),
-                    "Điểm CF": st.column_config.NumberColumn(format="%.2f")
+                    "Điểm CF": st.column_config.NumberColumn(format="%.2f"),
+                    "Điểm TB": st.column_config.NumberColumn(format="%.2f"),
+                    "Lượt đánh giá": st.column_config.NumberColumn(format="%d")
                 }
             )
 
@@ -552,7 +594,6 @@ elif tab == "🧠 Gợi ý Lai (Adaptive Hybrid)":
 # =========================================================
 elif tab == "📊 Báo cáo Đánh giá (Evaluation)":
     st.title("📊 Kết quả Đánh giá Thực nghiệm")
-    st.caption("Các biểu đồ này được load từ thư mục 'static/evaluation_charts'.")
     st.markdown("---")
 
     CHARTS_DIR = "static/evaluation_charts"

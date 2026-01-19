@@ -67,7 +67,8 @@ class CollaborativeModel:
             return []
 
         sim_scores = self.user_sim_matrix[user_id].drop(user_id)
-        top_sim_users = sim_scores.sort_values(ascending=False).head(top_n)
+        # NÂNG CẤP: Similarity Threshold (Chỉ lấy người có sim > 0.1)
+        top_sim_users = sim_scores[sim_scores > 0.1].sort_values(ascending=False).head(top_n)
 
         # Lấy row của user hiện tại
         user_ratings = self.user_item_matrix.loc[user_id]
@@ -99,16 +100,22 @@ class CollaborativeModel:
         return similar_users_data
 
     def recommend(self, user_id: int, top_k: int = 10, k_neighbors: int = 50) -> pd.DataFrame:
-        if not self.is_ready or user_id not in self.user_item_matrix.index:
+        if not self.is_ready or user_id not in self.user_sim_matrix.index:
             return pd.DataFrame()
 
         sim_vector = self.user_sim_matrix[user_id].drop(user_id)
-        top_k_users = sim_vector.nlargest(k_neighbors)
+        # NÂNG CẤP: Similarity Threshold
+        top_k_users = sim_vector[sim_vector > 0.1].nlargest(k_neighbors)
+        
         if top_k_users.empty or top_k_users.max() <= 0:
             return pd.DataFrame()
 
         top_k_sim_values = top_k_users.values
-        top_k_ratings = self.user_item_matrix.loc[top_k_users.index]
+        
+        # NÂNG CẤP: Candidate Selection (Chỉ lấy những phim mà neighbors đã xem)
+        top_k_ratings_raw = self.user_item_matrix.loc[top_k_users.index]
+        candidate_cols = top_k_ratings_raw.columns[(top_k_ratings_raw != 0).any()]
+        top_k_ratings = top_k_ratings_raw[candidate_cols]
 
         # 1. Tử số: Dot product
         weighted_sum = np.dot(top_k_sim_values, top_k_ratings.values)
@@ -125,13 +132,12 @@ class CollaborativeModel:
         pred_scores = np.clip(pred_deviations + user_mean, 0.5, 5.0)
 
         # 4. Lọc phim chưa xem & Loại bỏ nhiễu
-        user_ratings_current = self.user_item_matrix.loc[user_id]
+        user_ratings_current = self.user_item_matrix.loc[user_id, candidate_cols]
         is_unrated = (user_ratings_current == 0).values
-        # CỦA SỬA TẠI ĐÂY: valid_mask phải cùng size với số lượng phim (8983)
+        # CỦA SỬA TẠI ĐÂY: valid_mask phải cùng size với số lượng phim ứng viên
         valid_mask = is_unrated & (sum_of_weights > 0.001)
 
-        all_movie_ids = self.user_item_matrix.columns
-        final_scores = pd.Series(pred_scores, index=all_movie_ids)[valid_mask]
+        final_scores = pd.Series(pred_scores, index=candidate_cols)[valid_mask]
 
         # 5. Lấy Top N
         final_preds = final_scores.sort_values(ascending=False).head(top_k)
@@ -161,7 +167,8 @@ class CollaborativeModel:
 
         # 1. Tìm K hàng xóm giống User nhất (Y hệt bước 1 của Recommend)
         sim_vector = self.user_sim_matrix[user_id].drop(user_id)
-        top_k_users = sim_vector.nlargest(k_neighbors)
+        # NÂNG CẤP: Similarity Threshold
+        top_k_users = sim_vector[sim_vector > 0.1].nlargest(k_neighbors)
 
         if top_k_users.empty or top_k_users.max() <= 0:
             return float(self.user_mean_ratings.loc[user_id, 'mean_rating'])
