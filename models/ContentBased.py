@@ -5,14 +5,12 @@ import numpy as np
 
 class ContentBasedModel:
     def __init__(self, data_dir: str = None, min_similarity: float = 0.05):
-        # Logic tìm đường dẫn (Fallback nếu chạy riêng lẻ)
         if data_dir is None:
             current_file = os.path.abspath(__file__)
             project_root = os.path.dirname(os.path.dirname(current_file))
             data_dir = os.path.join(project_root, 'data', 'processed', 'evaluation')
         
         self.data_dir = data_dir
-        # Common luôn là thư mục anh em của data_dir (evaluation/production)
         self.common_dir = os.path.join(os.path.dirname(data_dir), 'common')
 
         self.min_similarity = min_similarity
@@ -142,7 +140,7 @@ class ContentBasedModel:
         weighted_sum = np.dot(actual_ratings, sim_subset)
         sum_sim = np.sum(sim_subset, axis=0)
 
-        # 3. XỬ LÝ ĐIỂM SỐ (QUAN TRỌNG ⭐)
+        # 3. XỬ LÝ ĐIỂM SỐ
         # Tạo mask cho những phim có độ tương đồng > 0
         has_sim_mask = sum_sim > 0
         
@@ -150,7 +148,6 @@ class ContentBasedModel:
         safe_sum_sim = np.where(has_sim_mask, sum_sim, 1.0)
         preds = weighted_sum / safe_sum_sim
 
-        # Logic chuẩn:
         # - Nếu có tương đồng: Clip điểm từ 0.5 đến 5.0
         # - Nếu KHÔNG tương đồng: Giữ nguyên là 0.0 (để lát nữa lọc bỏ)
         preds = np.where(has_sim_mask, np.clip(preds, 0.5, 5.0), 0.0)
@@ -160,13 +157,13 @@ class ContentBasedModel:
         full_watched_indices = [self.id_to_index[m] for m in full_watched_ids if m in self.id_to_index]
         preds[full_watched_indices] = -1 # Đánh dấu đã xem
 
-        # 5. LẤY ỨNG VIÊN (MỞ RỘNG BỘ ĐỆM)
+        # 5. LẤY ỨNG VIÊN
         # Lấy gấp 20 lần số lượng cần thiết để tha hồ lọc rác
         n_candidates = top_k * 20 
         top_indices = np.argsort(preds)[-n_candidates:][::-1]
 
         # 6. CHỌN LỌC CUỐI CÙNG
-        # Chỉ lấy những phim có điểm > 0 (Tức là máy có cơ sở để dự đoán)
+        # Chỉ lấy những phim có điểm > 0
         valid_indices = [idx for idx in top_indices if preds[idx] > 0]
         
         # Cắt lấy Top K
@@ -185,16 +182,14 @@ class ContentBasedModel:
         final_result = pd.merge(res_df, self.movies, on='movieId', how='left')
 
         # 8. CHỐT CHẶN CUỐI CÙNG: LỌC RÁC (Last Line of Defense)
-        # Đảm bảo không còn phim '(no genres listed)' nào lọt lưới
+        # Đảm bảo không còn phim '(no genres listed)'
         if 'genres' in final_result.columns:
             final_result = final_result[
                 ~final_result['genres'].str.contains('(no genres listed)', case=False, regex=False)
             ]
             
-        # Nếu lọc xong bị thiếu phim thì chấp nhận trả về ít hơn K, còn hơn là trả về rác.
         final_result = final_result.head(top_k)
 
-        # 9. Đổi tên cột cho khớp Frontend
         cols_map = {
             'movieId': 'movieId', 'title': 'title', 'genres': 'genres',
             'tag': 'tags', 'predicted_rating': 'score',

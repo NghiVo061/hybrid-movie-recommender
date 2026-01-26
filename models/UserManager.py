@@ -17,7 +17,6 @@ class UserManager:
     """
 
     def __init__(self, data_dir: str = None):
-        # Logic tìm đường dẫn (Fallback)
         if data_dir is None:
             current_file = os.path.abspath(__file__)
             project_root = os.path.dirname(os.path.dirname(current_file))
@@ -36,8 +35,7 @@ class UserManager:
             self.movie_title_map = dict(zip(self.movies.movieId, self.movies.title))
             self.movie_genre_map = dict(zip(self.movies.movieId, self.movies.genres))
 
-            # 2. LOAD USER RATINGS (NHẸ)
-            # --- START FIX: Tự động chọn file ratings_cleaned.csv hoặc train_data.csv ---
+            # 2. LOAD USER RATINGS
             f_prod = os.path.join(self.data_dir, 'ratings_cleaned.csv')
             f_eval = os.path.join(self.data_dir, 'train_data.csv')
 
@@ -47,7 +45,6 @@ class UserManager:
                 ratings_path = f_eval
             else:
                 raise FileNotFoundError(f"Missing ratings file in {self.data_dir}")
-            # --- END FIX ---
 
             self.ratings = pd.read_csv(ratings_path)
 
@@ -124,7 +121,6 @@ class UserManager:
     def get_user_profile(self, user_id: int) -> Dict:
         """
         Lấy thông tin chi tiết User (User Persona).
-        Đây là LOGIC CHUẨN DUY NHẤT cho toàn hệ thống.
         """
         if not self.is_ready:
             return {}

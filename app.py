@@ -213,7 +213,7 @@ tab = st.sidebar.radio(
         "👤 Quản lý Người dùng (User)",
         "📚 Gợi ý theo Nội dung (Content-Based)",
         "👥 Gợi ý theo Cộng đồng (Collaborative)",
-        "🧠 Gợi ý Kết hợp (Adaptive Hybrid)",
+        "🧠 Gợi ý Lai ghép (Hybrid)",
         "📊 Báo cáo Đánh giá (Evaluation)"
     ],
     label_visibility="collapsed"
@@ -436,8 +436,8 @@ elif tab == "👥 Gợi ý theo Cộng đồng (Collaborative)":
 # =========================================================
 # TAB 4 – ADAPTIVE HYBRID (COMPLETE FIX & DYNAMIC UI)
 # =========================================================
-elif tab == "🧠 Gợi ý Kết hợp (Adaptive Hybrid)":
-    st.title("🧠 Adaptive Hybrid System")
+elif tab == "🧠 Gợi ý Lai ghép (Hybrid)":
+    st.title("🧠 Adaptive Weighted Hybrid")
     st.caption("Tự động tối ưu hóa giữa sở thích cá nhân và xu hướng cộng đồng để đưa ra gợi ý chính xác nhất cho từng giai đoạn trải nghiệm.")
     st.markdown("---")
 
@@ -543,21 +543,22 @@ elif tab == "🧠 Gợi ý Kết hợp (Adaptive Hybrid)":
         cols_to_show = ["title", "genres", "score", "score_cb", "score_cf"]
 
         with st.spinner("Đang tổng hợp kết quả..."):
-            if is_cf_failed and is_cb_failed:
-                recs = hybrid.get_popular_recommendations(top_k=10)
-                cols_to_show = ["title", "genres", "avg_rating", "votes"]
-            elif is_cf_failed:
-                recs = hybrid.cb_model.recommend(uid, top_k=10)
-                if not recs.empty:
-                    recs["score_cb"] = recs["score"]
-                    cols_to_show = ["title", "genres", "score", "score_cb"]
-            elif is_cb_failed:
-                recs = hybrid.cf_model.recommend(uid, top_k=10)
-                if not recs.empty:
-                    recs["score_cf"] = recs["score"]
-                    cols_to_show = ["title", "genres", "score", "score_cf"]
-            else:
-                recs = hybrid.recommend(uid, top_k=10)
+            # 1. Gọi hàm recommend (Hybrid.py đã lo mọi logic xử lý lỗi/fallback)
+            recs = hybrid.recommend(uid, top_k=10)
+
+            # 2. Tự động tạo list cols_to_show dựa trên dữ liệu trả về
+            cols_to_show = ["title", "genres"]
+
+            if "score" in recs.columns:
+                cols_to_show.append("score")
+
+            # Logic: Chỉ thêm cột score_cb vào list hiển thị nếu nó có dữ liệu (>0)
+            if "score_cb" in recs.columns and (recs["score_cb"] > 0).any():
+                cols_to_show.append("score_cb")
+
+            # Logic: Chỉ thêm cột score_cf vào list hiển thị nếu nó có dữ liệu (>0)
+            if "score_cf" in recs.columns and (recs["score_cf"] > 0).any():
+                cols_to_show.append("score_cf")
 
         # ---------------------------------------------------------
         # BƯỚC 4: HIỂN THỊ KẾT QUẢ (DYNAMICS COLUMNS)
@@ -572,8 +573,7 @@ elif tab == "🧠 Gợi ý Kết hợp (Adaptive Hybrid)":
             
             rename_dict = {
                 "title": "Tên Phim", "genres": "Thể loại",
-                "score": "Điểm Hybrid", "score_cb": "Điểm CB", "score_cf": "Điểm CF",
-                "avg_rating": "Điểm TB", "votes": "Lượt đánh giá"
+                "score": "Điểm Hybrid", "score_cb": "Điểm CB", "score_cf": "Điểm CF"
             }
             
             st.dataframe(
@@ -583,9 +583,7 @@ elif tab == "🧠 Gợi ý Kết hợp (Adaptive Hybrid)":
                     "Tên Phim": st.column_config.TextColumn(width="medium"),
                     "Điểm Hybrid": st.column_config.NumberColumn(format="%.2f"),
                     "Điểm CB": st.column_config.NumberColumn(format="%.2f"),
-                    "Điểm CF": st.column_config.NumberColumn(format="%.2f"),
-                    "Điểm TB": st.column_config.NumberColumn(format="%.2f"),
-                    "Lượt đánh giá": st.column_config.NumberColumn(format="%d")
+                    "Điểm CF": st.column_config.NumberColumn(format="%.2f")
                 }
             )
 

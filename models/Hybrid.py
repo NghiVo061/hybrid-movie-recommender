@@ -73,7 +73,6 @@ class AdaptiveHybridModel:
     def get_popular_recommendations(self, top_k=10):
         """
         Fallback: Trả về phim phổ biến nhất nếu User mới tinh.
-        (GIỮ NGUYÊN KHÔNG ĐỔI)
         """
         if self.movies is None or self.movies.empty:
             return pd.DataFrame()
@@ -91,8 +90,7 @@ class AdaptiveHybridModel:
 
     def recommend(self, user_id: int, top_k: int = 10) -> pd.DataFrame:
         """
-        Hàm gợi ý Hybrid: Đã sửa lại logic để lấy điểm thật (Predict) 
-        thay vì điền 0, và đảm bảo trả về Title/Genres.
+        Hàm gợi ý Hybrid.
         """
         if not self.is_ready: return pd.DataFrame()
 
@@ -113,6 +111,12 @@ class AdaptiveHybridModel:
         # Nếu cả 2 đều rỗng -> Trả về rỗng
         if df_cb.empty and df_cf.empty: return pd.DataFrame()
 
+        if df_cf.empty and not df_cb.empty:
+            alpha = 0.0
+
+        elif df_cb.empty and not df_cf.empty:
+            alpha = 1.0
+
         cb_scores = df_cb[['movieId', 'score']].rename(columns={'score': 'score_cb'}) if not df_cb.empty else pd.DataFrame(columns=['movieId', 'score_cb'])
         cf_scores = df_cf[['movieId', 'score']].rename(columns={'score': 'score_cf'}) if not df_cf.empty else pd.DataFrame(columns=['movieId', 'score_cf'])
 
@@ -126,15 +130,19 @@ class AdaptiveHybridModel:
             s_cb = row['score_cb']
             s_cf = row['score_cf']
             
-            # Nếu thiếu điểm CB -> Gọi CB Model dự đoán
-            if pd.isna(s_cb):
+            # Nếu thiếu điểm CB và Alpha < 1.0 (Tức là vẫn cần CB)
+            if pd.isna(s_cb) and alpha < 1.0:
                 try: s_cb = self.cb_model.predict(user_id, mid)
                 except: s_cb = 0.0
+            elif pd.isna(s_cb): # Alpha = 1.0
+                s_cb = 0.0
             
-            # Nếu thiếu điểm CF -> Gọi CF Model dự đoán
-            if pd.isna(s_cf):
+            # Nếu thiếu điểm CF và Alpha > 0.0 (Tức là vẫn cần CF)
+            if pd.isna(s_cf) and alpha > 0.0:
                 try: s_cf = self.cf_model.predict(user_id, mid, k_neighbors=50)
                 except: s_cf = 0.0
+            elif pd.isna(s_cf): # Alpha = 0.0
+                s_cf = 0.0
             
             return pd.Series([s_cb, s_cf])
 
@@ -176,9 +184,9 @@ class AdaptiveHybridModel:
             final_result['votes'] = final_result['votes'].fillna(0).astype(int)
 
         desired_order = [
-            'movieId', 'title', 'genres',       # Thông tin cơ bản
-            'score', 'score_cb', 'score_cf',    # Điểm số
-            'avg_rating', 'votes', 'tags'       # Thông tin bổ trợ
+            'movieId', 'title', 'genres',       
+            'score', 'score_cb', 'score_cf',   
+            'avg_rating', 'votes', 'tags'      
         ]
         
         # Chỉ lấy những cột thực sự tồn tại trong kết quả
@@ -197,14 +205,47 @@ class AdaptiveHybridModel:
 
         # Check tồn tại để tránh lỗi
         if user_id not in self.user_manager.user_counts:
-             return 0.0 # Hoặc global mean
+             return 0.0 
 
         alpha = self.calculate_adaptive_weight(user_id)
-        cf_pred = self.cf_model.predict(user_id, movie_id, k_neighbors=50)
-        cb_pred = self.cb_model.predict(user_id, movie_id)
 
-        final_pred = (alpha * cf_pred) + ((1 - alpha) * cb_pred)
-        return float(np.clip(final_pred, 0.5, 5.0))
+        cf_pred = 0.0
+        cb_pred = 0.0
+
+        # Nếu Alpha > 0 thì mới cần tính CF
+        if alpha > 0.0:
+            try: 
+                cf_pred = self.cf_model.predict(user_id, movie_id, k_neighbors=50)
+            except: 
+                cf_pred = 0.0
+
+        # Nếu Alpha < 1 thì mới cần tính CB
+        if alpha < 1.0:
+            try: 
+                cb_pred = self.cb_model.predict(user_id, movie_id)
+            except: 
+                cb_pred = 0.0
+
+        # Trường hợp 1: CF thất bại (trả về 0) nhưng CB tính được
+        # -> Bỏ qua Alpha, tin hoàn toàn vào CB
+        if cf_pred == 0.0 and cb_pred > 0.0:
+            final_pred = cb_pred
+            
+        # Trường hợp 2: CB thất bại (trả về 0) nhưng CF tính được
+        # -> Bỏ qua Alpha, tin hoàn toàn vào CF
+        elif cb_pred == 0.0 and cf_pred > 0.0:
+            final_pred = cf_pred
+            
+        # Trường hợp 3: Cả 2 đều tính được (hoặc cả 2 đều tạch)
+        # -> Dùng công thức lai ghép bình thường
+        else:
+            final_pred = (alpha * cf_pred) + ((1 - alpha) * cb_pred)
+
+        # Cắt ngưỡng 0.5 - 5.0 (nếu kết quả > 0)
+        if final_pred > 0:
+            return float(np.clip(final_pred, 0.5, 5.0))
+        else:
+            return 0.0
 
     # --- CÁC HÀM UI HELPER ---
     def search_user(self, keyword, limit=10):

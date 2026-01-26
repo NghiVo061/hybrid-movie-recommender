@@ -9,7 +9,6 @@ class CollaborativeModel:
         """
         Backend Model cho User-Based Collaborative Filtering.
         """
-        # Logic tìm đường dẫn (Fallback)
         if data_dir is None:
             current_file = os.path.abspath(__file__)
             project_root = os.path.dirname(os.path.dirname(current_file))
@@ -67,27 +66,20 @@ class CollaborativeModel:
             return []
 
         sim_scores = self.user_sim_matrix[user_id].drop(user_id)
-        # NÂNG CẤP: Similarity Threshold (Chỉ lấy người có sim > 0.1)
         top_sim_users = sim_scores[sim_scores > 0.1].sort_values(ascending=False).head(top_n)
 
-        # Lấy row của user hiện tại
         user_ratings = self.user_item_matrix.loc[user_id]
         
-        # SỬA LỖI TẠI ĐÂY: Dùng != 0 thay vì > 0
-        # Để lấy tất cả phim ĐÃ XEM (bao gồm cả phim cho điểm thấp/âm)
         user_watched_ids = set(user_ratings[user_ratings != 0].index)
 
         similar_users_data = []
         for sim_user_id, score in top_sim_users.items():
             sim_ratings = self.user_item_matrix.loc[sim_user_id]
             
-            # SỬA LỖI TẠI ĐÂY CŨNG VẬY
             sim_watched_ids = set(sim_ratings[sim_ratings != 0].index)
 
-            # Tìm giao thoa (Phim cả 2 cùng xem, bất kể khen chê)
             common_ids = list(user_watched_ids & sim_watched_ids)
             
-            # Lấy tên phim
             common_titles = self.movies[self.movies['movieId'].isin(common_ids)]['title'].head(5).tolist()
 
             similar_users_data.append({
@@ -104,7 +96,6 @@ class CollaborativeModel:
             return pd.DataFrame()
 
         sim_vector = self.user_sim_matrix[user_id].drop(user_id)
-        # NÂNG CẤP: Similarity Threshold
         top_k_users = sim_vector[sim_vector > 0.1].nlargest(k_neighbors)
         
         if top_k_users.empty or top_k_users.max() <= 0:
@@ -112,7 +103,6 @@ class CollaborativeModel:
 
         top_k_sim_values = top_k_users.values
         
-        # NÂNG CẤP: Candidate Selection (Chỉ lấy những phim mà neighbors đã xem)
         top_k_ratings_raw = self.user_item_matrix.loc[top_k_users.index]
         candidate_cols = top_k_ratings_raw.columns[(top_k_ratings_raw != 0).any()]
         top_k_ratings = top_k_ratings_raw[candidate_cols]
@@ -122,7 +112,6 @@ class CollaborativeModel:
 
         # 2. Mẫu số: Chỉ cộng sim của những người đã đánh giá phim đó
         is_rated_matrix = (top_k_ratings != 0).astype(float)
-        # Sử dụng np.abs của sim để đúng công thức Collaborative Filtering
         sum_of_weights = np.dot(np.abs(top_k_sim_values), is_rated_matrix.values)
         sum_of_weights = np.where(sum_of_weights == 0, 1e-9, sum_of_weights)
 
@@ -134,7 +123,6 @@ class CollaborativeModel:
         # 4. Lọc phim chưa xem & Loại bỏ nhiễu
         user_ratings_current = self.user_item_matrix.loc[user_id, candidate_cols]
         is_unrated = (user_ratings_current == 0).values
-        # CỦA SỬA TẠI ĐÂY: valid_mask phải cùng size với số lượng phim ứng viên
         valid_mask = is_unrated & (sum_of_weights > 0.001)
 
         final_scores = pd.Series(pred_scores, index=candidate_cols)[valid_mask]
@@ -165,7 +153,7 @@ class CollaborativeModel:
         if not self.is_ready or user_id not in self.user_sim_matrix.index:
             return 0.0
 
-        # 1. Tìm K hàng xóm giống User nhất (Y hệt bước 1 của Recommend)
+        # 1. Tìm K hàng xóm giống User nhất
         sim_vector = self.user_sim_matrix[user_id].drop(user_id)
         # NÂNG CẤP: Similarity Threshold
         top_k_users = sim_vector[sim_vector > 0.1].nlargest(k_neighbors)
@@ -178,7 +166,7 @@ class CollaborativeModel:
             return float(self.user_mean_ratings.loc[user_id, 'mean_rating'])
 
         # 3. Lấy rating của K hàng xóm này cho phim movie_id
-        # Lưu ý: Ta chỉ tính dựa trên những người TRONG NHÓM K đã xem phim này
+        # Lưu ý: Chỉ tính dựa trên những người TRONG NHÓM K đã xem phim này
         neighbor_ratings = self.user_item_matrix.loc[top_k_users.index, movie_id]
 
         # Chỉ lấy những người có chấm điểm (khác 0)
@@ -189,7 +177,7 @@ class CollaborativeModel:
         if relevant_sims.empty:
             return float(self.user_mean_ratings.loc[user_id, 'mean_rating'])
 
-        # 4. Tính toán Weighted Sum (Y hệt bước 2 của Recommend)
+        # 4. Tính toán Weighted Sum
         # Điểm dự đoán = User_Mean + (Tổng(Sim * Deviation) / Tổng(Sim))
         weighted_sum = np.dot(relevant_sims.values, relevant_ratings.values)
         sum_of_weights = np.abs(relevant_sims.values).sum()
