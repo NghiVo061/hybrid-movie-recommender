@@ -170,12 +170,14 @@ class UserManager:
         top_genres = [g[0] for g in genre_counter.most_common(3)]
 
         # 4. INTERACTION LEVEL (HEURISTIC)
-        if count >= 50:
-            level = "High"
+        if count >= 150:
+            level = "Power User"
+        elif count >= 50:
+            level = "Active"    
         elif count >= 20:
-            level = "Medium"
+            level = "Regular" 
         else:
-            level = "Low"
+            level = "Newbie"    
 
         return {
             "id": int(user_id),

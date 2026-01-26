@@ -226,20 +226,7 @@ class AdaptiveHybridModel:
             except: 
                 cb_pred = 0.0
 
-        # Trường hợp 1: CF thất bại (trả về 0) nhưng CB tính được
-        # -> Bỏ qua Alpha, tin hoàn toàn vào CB
-        if cf_pred == 0.0 and cb_pred > 0.0:
-            final_pred = cb_pred
-            
-        # Trường hợp 2: CB thất bại (trả về 0) nhưng CF tính được
-        # -> Bỏ qua Alpha, tin hoàn toàn vào CF
-        elif cb_pred == 0.0 and cf_pred > 0.0:
-            final_pred = cf_pred
-            
-        # Trường hợp 3: Cả 2 đều tính được (hoặc cả 2 đều tạch)
-        # -> Dùng công thức lai ghép bình thường
-        else:
-            final_pred = (alpha * cf_pred) + ((1 - alpha) * cb_pred)
+        final_pred = (alpha * cf_pred) + ((1 - alpha) * cb_pred)
 
         # Cắt ngưỡng 0.5 - 5.0 (nếu kết quả > 0)
         if final_pred > 0:
