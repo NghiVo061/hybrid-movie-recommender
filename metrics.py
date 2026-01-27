@@ -5,7 +5,7 @@ import seaborn as sns
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import os
 import sys
-import time # Dùng để đo thời gian chạy
+import time
 
 # =========================================================
 # IMPORT MODEL (CHUẨN PYTHON)
@@ -176,7 +176,6 @@ def run_evaluation():
     print("\n[Task 4] Đang vẽ và lưu biểu đồ (Clean Style)...")
     sns.set_style("whitegrid") 
 
-    # --- HÀM VẼ ĐÃ CHỈNH SỬA: BỎ 'Cao hơn/Thấp hơn là tốt hơn' ---
     def plot_comparison(metric_name, values, title, filename, color_palette, higher_is_better=True):
         plt.figure(figsize=(8, 6))
         ax = sns.barplot(x=models_list, y=values, palette=color_palette, hue=models_list, legend=False)
